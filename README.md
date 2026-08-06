@@ -167,7 +167,7 @@ not field-network performance measurements.
 | F1 | 0.7012 |
 | RCA accuracy on diagnosed episodes | 52.63% |
 | Tests | 83 passing |
-| Branch coverage | 94.52% reproduced locally |
+| Branch coverage | 94.52% reproduced locally on Python 3.11 |
 
 Run the same checks with:
 
