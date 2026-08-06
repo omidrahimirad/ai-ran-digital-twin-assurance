@@ -5,14 +5,14 @@ build-backend = "hatchling.build"
 [project]
 name = "ai-ran-digital-twin-assurance"
 version = "0.1.0"
-description = "Simulation-based AI-assisted RAN assurance and lightweight network digital twin"
+description = "Synthetic AI-assisted RAN assurance with a bounded state-response surrogate"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
 authors = [{ name = "Omid Rahimi" }]
 dependencies = [
   "fastapi>=0.115,<1",
-  "httpx>=0.27,<1",
+  "httpx2>=2.7,<3",
   "networkx>=3.3,<4",
   "numpy>=1.26,<2.4",
   "pandas>=2.2,<3",

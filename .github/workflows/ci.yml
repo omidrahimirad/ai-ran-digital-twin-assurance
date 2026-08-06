@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, feat/initial-mvp]
+    branches: [main]
   pull_request:
 
 permissions:
@@ -16,23 +16,42 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12"]
     steps:
-      - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
-      - run: uv sync --extra dev
+      - run: uv sync --frozen --extra dev
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy src
-      - run: uv run pytest --cov=ai_ran_assurance --cov-report=term-missing --cov-report=xml
+      - run: uv run pytest --cov=ai_ran_assurance --cov-report=term-missing --cov-report=xml --cov-report=json:artifacts/coverage.json
+      - if: matrix.python-version == '3.11'
+        run: uv run ai-ran-assurance demo --scenario congestion > /tmp/demo.json
+      - if: matrix.python-version == '3.11'
+        run: uv run python scripts/run_benchmark.py
+      - if: matrix.python-version == '3.11'
+        run: git diff --exit-code -- artifacts/sample_results.json docs/results.md
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          enable-cache: true
+          python-version: "3.11"
+      - run: uv export --quiet --frozen --no-dev --no-emit-project --format requirements-txt --output-file /tmp/runtime-requirements.txt
+      - run: uvx --from pip-audit==2.9.0 pip-audit --requirement /tmp/runtime-requirements.txt --disable-pip
+      - run: uvx --from bandit==1.8.6 bandit -q -r src dashboard scripts
 
   docker:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: docker/setup-buildx-action@v4
-      - uses: docker/build-push-action@v7
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+      - run: docker compose config --quiet
+      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
           push: false
