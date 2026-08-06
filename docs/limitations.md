@@ -1,6 +1,7 @@
 # Limitations
 
-This is a synthetic software-assurance exercise, not evidence of network performance.
+This prototype evaluates software behavior with synthetic inputs; it does not provide
+evidence of network performance.
 
 ## Telecom and modeling limits
 
