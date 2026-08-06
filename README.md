@@ -158,7 +158,7 @@ the workflow. The committed result is intentionally not perfect:
 | Unsafe/escalation guardrail cases rejected | 16 / 16 |
 | Safe guardrail control approved | 1 / 1 |
 | API health smoke | 25 / 25 successful |
-| Branch-aware package coverage | 94.43% |
+| Branch-aware package coverage | at least 94% |
 
 Missed episodes are counted as false negatives. RCA accuracy excludes undetected
 episodes and must therefore be read with the episode detection rate. The zero sample
@@ -181,7 +181,9 @@ rejection, truth-independent workflow selection, ambiguous RCA, conservative act
 effects, impacted-cell checks, stale/future telemetry, low confidence, cooldown, strict
 API schemas, server-side prediction, CLI/API/E2E behavior, and benchmark generation. The
 security target audits the exact locked runtime export and statically scans Python code.
-CI repeats quality checks on Python 3.11/3.12, verifies generated artifacts on 3.11,
+Coverage is a separate quality gate because branch coverage varies slightly by platform
+(94.29% on Linux CI and 94.43% on the reproduced macOS run). CI repeats quality checks on
+Python 3.11/3.12, verifies generated artifacts on 3.11,
 validates Compose, and builds the image.
 
 ## Remaining limitations

@@ -45,6 +45,7 @@
 - Ground truth is used by the evaluator to identify positive samples and episode evidence.
 - Detection delay is reported only on detected episodes; missed episodes remain false
   negatives and are separately visible in episode detection rate.
-- Coverage is captured by the full test suite before artifact generation.
+- Coverage is a separate CI quality gate and is not embedded in the cross-platform
+  deterministic benchmark artifact.
 - API checks establish functional health only. No latency, load, concurrency, or
   scalability claim is made.

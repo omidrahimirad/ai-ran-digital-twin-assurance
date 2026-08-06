@@ -26,14 +26,6 @@ EVALUATION_SEEDS = (101, 211, 307)
 EVALUATION_SEVERITIES = (0.55, 0.8)
 
 
-def _coverage_percent(path: Path) -> float | None:
-    if not path.exists():
-        return None
-    data = json.loads(path.read_text(encoding="utf-8"))
-    value = data.get("totals", {}).get("percent_covered")
-    return round(float(value), 2) if value is not None else None
-
-
 def _validated_copy(model: Any, **updates: Any) -> Any:
     values = model.model_dump()
     values.update(updates)
@@ -287,9 +279,6 @@ def run_benchmark() -> dict[str, Any]:
         },
         "guardrail_regression": _guardrail_regression(engine),
         "runtime_observation": {"api_health_smoke": _api_health_smoke()},
-        "quality_context": {
-            "test_coverage_pct": _coverage_percent(Path("artifacts/coverage.json"))
-        },
         "scenarios": scenario_results,
     }
 
@@ -304,10 +293,6 @@ def _markdown(results: dict[str, Any]) -> str:
         f"| {name} | {item['episodes']} | {item['detected_episodes']} | "
         f"{item['correct_root_causes']} | {item['ambiguous_root_causes']} |"
         for name, item in results["scenarios"].items()
-    )
-    coverage = results["quality_context"]["test_coverage_pct"]
-    coverage_text = (
-        f"{coverage:.2f}%" if coverage is not None else "not available; run coverage first"
     )
     delay_text = results["average_detection_delay_minutes_on_detected_episodes"]
     rca_text = root_cause["accuracy_on_diagnosed_episodes"]
@@ -340,7 +325,6 @@ Ground truth is used only by this evaluator for scoring, not by workflow selecti
 | Guardrail regression cases rejected/escalated | {guardrail_text} |
 | Safe guardrail control approved | {guardrails["safe_control_approved"]} |
 | API health smoke | {api_smoke["requests"]}/25 successful |
-| Test coverage context | {coverage_text} |
 
 No API latency number is reported: an in-process test client cannot establish service,
 network, concurrency, or scalability performance.

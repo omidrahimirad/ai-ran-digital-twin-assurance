@@ -104,6 +104,7 @@ That produces 48 episodes and 220,800 cell/time samples.
 - Guardrail regression contains one explicit safe control plus sixteen isolated unsafe
   or escalation cases.
 - API health is 25 successful in-process requests; timing is intentionally omitted.
-- Coverage is read from a full `pytest-cov` run performed before artifact generation.
+- Coverage is checked separately by CI because small platform-specific branch differences
+  do not belong in the deterministic benchmark artifact.
 
 The artifact is a closed-set stress test, not an external benchmark.

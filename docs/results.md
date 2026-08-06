@@ -24,7 +24,6 @@ Ground truth is used only by this evaluator for scoring, not by workflow selecti
 | Guardrail regression cases rejected/escalated | 16/16 |
 | Safe guardrail control approved | 1 |
 | API health smoke | 25/25 successful |
-| Test coverage context | 94.43% |
 
 No API latency number is reported: an in-process test client cannot establish service,
 network, concurrency, or scalability performance.

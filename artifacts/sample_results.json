@@ -49,9 +49,6 @@
       "scope": "in-process API health smoke; no latency or load claim"
     }
   },
-  "quality_context": {
-    "test_coverage_pct": 94.43
-  },
   "scenarios": {
     "congestion": {
       "episodes": 6,
