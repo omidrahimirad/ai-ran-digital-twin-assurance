@@ -16,7 +16,7 @@ No metric in this document is an invented or commercial-network benchmark.
 | Average detection delay | 0.000 minutes |
 | Root-cause accuracy | 100.00% |
 | Unsafe candidate actions rejected | 100.00% (8 cases) |
-| API `/health` latency | 0.999 ms mean / 1.351 ms p95 (25 calls) |
+| API `/health` latency | 0.968 ms mean / 1.448 ms p95 (25 calls) |
 | Core-package test coverage | 98.32% |
 
 ## Scenario detail

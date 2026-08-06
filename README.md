@@ -163,7 +163,7 @@ and [`docs/results.md`](docs/results.md). The committed run used seed 42:
 | Average detection delay | 0.000 minutes |
 | Root-cause classification accuracy | 100.00% |
 | Unsafe synthetic actions rejected | 100.00% (8 cases) |
-| API health latency | 0.999 ms mean / 1.351 ms p95 (local run) |
+| API health latency | 0.968 ms mean / 1.448 ms p95 (local run) |
 | Core-package coverage | 98.32% |
 
 These perfect classification values are bounded to the eight deterministic, deliberately

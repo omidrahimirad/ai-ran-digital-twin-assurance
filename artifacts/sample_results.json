@@ -18,8 +18,8 @@
   "unsafe_actions_rejected_pct": 100.0,
   "unsafe_action_cases": 8,
   "api_latency_ms": {
-    "mean": 0.999,
-    "p95": 1.351,
+    "mean": 0.968,
+    "p95": 1.448,
     "samples": 25
   },
   "test_coverage_pct": 98.32,

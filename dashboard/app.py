@@ -50,7 +50,7 @@ selected_kpis = st.multiselect(
 )
 st.plotly_chart(
     px.line(cell_frame, x="timestamp", y=selected_kpis, title="Synthetic KPI evolution"),
-    use_container_width=True,
+    width="stretch",
 )
 
 st.subheader("Anomalies")
