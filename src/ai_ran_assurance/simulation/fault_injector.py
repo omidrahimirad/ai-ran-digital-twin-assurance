@@ -19,12 +19,12 @@ class FaultInjector:
         severity = scenario.severity
         match scenario.fault_type:
             case FaultType.CELL_CONGESTION:
-                values["prb_utilization_pct"] += 35 * severity
-                values["latency_ms"] += 55 * severity
+                values["prb_utilization_pct"] += 80 * severity
+                values["latency_ms"] += 90 * severity
                 values["throughput_mbps"] *= 1 - 0.55 * severity
                 values["rrc_success_pct"] -= 5 * severity
             case FaultType.INCREASED_INTERFERENCE:
-                values["sinr_db"] -= 14 * severity
+                values["sinr_db"] -= 24 * severity
                 values["bler_pct"] += 18 * severity
                 values["throughput_mbps"] *= 1 - 0.5 * severity
             case FaultType.MISSING_NEIGHBOR:
@@ -40,8 +40,8 @@ class FaultInjector:
                 values["latency_ms"] += 120 * severity
                 values["throughput_mbps"] *= 1 - 0.35 * severity
             case FaultType.COVERAGE_DEGRADATION:
-                values["rsrp_dbm"] -= 20 * severity
-                values["sinr_db"] -= 7 * severity
+                values["rsrp_dbm"] -= 38 * severity
+                values["sinr_db"] -= 12 * severity
                 values["call_drop_pct"] += 3 * severity
             case FaultType.BLER_INCREASE:
                 values["bler_pct"] += 25 * severity
