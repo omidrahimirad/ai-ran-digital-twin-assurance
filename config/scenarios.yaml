@@ -1,0 +1,9 @@
+scenarios:
+  - {name: congestion, fault_type: cell_congestion, target_cells: [CELL-003], start_step: 36, duration: 12, severity: 0.8, affected_kpis: [prb_utilization_pct, throughput_mbps, latency_ms, rrc_success_pct], ground_truth: congestion}
+  - {name: interference, fault_type: increased_interference, target_cells: [CELL-006], start_step: 36, duration: 12, severity: 0.8, affected_kpis: [sinr_db, bler_pct, throughput_mbps], ground_truth: interference}
+  - {name: missing_neighbor, fault_type: missing_neighbor_relation, target_cells: [CELL-009], start_step: 36, duration: 12, severity: 0.8, affected_kpis: [handover_success_pct, call_drop_pct], ground_truth: neighbor_relation}
+  - {name: outage, fault_type: cell_outage, target_cells: [CELL-012], start_step: 36, duration: 12, severity: 1.0, affected_kpis: [availability_pct, rrc_success_pct, throughput_mbps], ground_truth: cell_outage}
+  - {name: transport_latency, fault_type: transport_latency_degradation, target_cells: [CELL-015], start_step: 36, duration: 12, severity: 0.8, affected_kpis: [latency_ms, throughput_mbps], ground_truth: transport}
+  - {name: coverage, fault_type: coverage_degradation, target_cells: [CELL-018], start_step: 36, duration: 12, severity: 0.8, affected_kpis: [rsrp_dbm, sinr_db, call_drop_pct], ground_truth: coverage}
+  - {name: bler, fault_type: abnormal_bler_increase, target_cells: [CELL-005], start_step: 36, duration: 12, severity: 0.8, affected_kpis: [bler_pct, throughput_mbps], ground_truth: radio_quality}
+  - {name: mobility, fault_type: mobility_parameter_misconfiguration, target_cells: [CELL-010], start_step: 36, duration: 12, severity: 0.8, affected_kpis: [handover_success_pct, call_drop_pct], ground_truth: mobility_configuration}
