@@ -9,7 +9,8 @@ htmlcov
 .pytest_cache
 .mypy_cache
 .ruff_cache
-artifacts
+artifacts/*
+!artifacts/sample_results.json
 data
 docs
 tests

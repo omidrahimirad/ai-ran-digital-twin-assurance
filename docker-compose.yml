@@ -15,6 +15,11 @@ services:
   dashboard:
     build: .
     command: ["streamlit", "run", "dashboard/app.py", "--server.address=0.0.0.0", "--server.port=8501"]
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      AI_RAN_API_URL: http://api:8000
     init: true
     security_opt:
       - no-new-privileges:true

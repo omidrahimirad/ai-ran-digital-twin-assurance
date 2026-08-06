@@ -18,6 +18,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
+COPY artifacts/sample_results.json ./artifacts/
 COPY config ./config
 COPY dashboard ./dashboard
 
