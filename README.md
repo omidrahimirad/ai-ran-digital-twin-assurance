@@ -13,6 +13,10 @@ to a non-executable shadow decision. Explicit rules handle policy and safety bou
 an Isolation Forest supplements statistical anomaly detection; deterministic what-if
 responses make action evaluation inspectable and testable.
 
+![AI-assisted RAN assurance dashboard showing synthetic network topology, KPI status, and shadow-mode workflow summary.](docs/assets/dashboard-overview.png)
+
+*Overview from a deterministic synthetic congestion replay; no live-network data is shown.*
+
 ## Key capabilities
 
 - Generates deterministic five-minute KPI aggregates for a configurable 20-cell
@@ -56,6 +60,13 @@ The current deterministic demo follows this sequence:
 This path is intentionally useful even when the outcome is rejection: it demonstrates
 that a recommendation cannot bypass the final safety boundary.
 
+The guardrail regression suite also includes a fresh, high-confidence safe-control case
+that is approved for shadow reporting.
+
+![Scenario replay from synthetic RAN telemetry through detection, diagnosis, action evaluation, guardrails, and shadow reporting.](docs/assets/workflow-demo.gif)
+
+*Congestion replay using deterministic synthetic telemetry; the final action remains rejected.*
+
 ## System workflow
 
 ```mermaid
@@ -73,8 +84,6 @@ flowchart LR
 
 Ground truth is retained for evaluation only. It is not used to select workflow
 anomalies, infer diagnoses, or approve actions.
-
-<!-- TODO: Add docs/assets/workflow-demo.gif when a stable capture is available. -->
 
 ## Architecture
 
@@ -144,8 +153,6 @@ The API exposes topology, telemetry, anomalies, diagnoses, recommendations, shad
 decisions, metrics, scenario replay, and server-side action validation. Local CLI startup
 binds to `127.0.0.1` by default.
 
-<!-- TODO: Add docs/assets/dashboard-overview.png after the dashboard capture is finalized. -->
-
 ## Reproduced evaluation summary
 
 The committed evaluation covers 48 closed-set synthetic episodes across eight scenarios,
@@ -159,8 +166,8 @@ not field-network performance measurements.
 | Recall | 0.5399 |
 | F1 | 0.7012 |
 | RCA accuracy on diagnosed episodes | 52.63% |
-| Tests | 70 passing |
-| Branch coverage | 94.29% in Linux CI |
+| Tests | 83 passing |
+| Branch coverage | 94.52% reproduced locally |
 
 Run the same checks with:
 
