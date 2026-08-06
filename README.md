@@ -1,78 +1,99 @@
-# Synthetic RAN Assurance with a State-and-Response Surrogate
+# AI-Assisted RAN Assurance with Shadow-Mode Action Validation
 
 [![CI](https://github.com/omidrahimirad/ai-ran-digital-twin-assurance/actions/workflows/ci.yml/badge.svg)](https://github.com/omidrahimirad/ai-ran-digital-twin-assurance/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.12-blue)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A portfolio-scale Python implementation of a synthetic, multi-cell RAN assurance
-pipeline. It combines explicit KPI rules with an Isolation Forest, produces
-evidence-based diagnoses, evaluates conservative what-if actions on copied state, and
-ends at a safety-checked shadow report.
+A vendor-neutral engineering prototype for multi-cell RAN monitoring, hybrid anomaly
+detection, explainable root-cause analysis, and safety-checked evaluation of corrective
+actions in shadow mode.
 
-> **All telemetry and results are synthetic. Nothing here demonstrates performance on a
-> commercial network.**
+The project provides a reproducible reference pipeline from time-aligned KPI telemetry
+to a non-executable shadow decision. Explicit rules handle policy and safety boundaries;
+an Isolation Forest supplements statistical anomaly detection; deterministic what-if
+responses make action evaluation inspectable and testable.
 
-## Technical boundaries
+## Key capabilities
 
-This repository is not an RF simulator, a network digital twin in a standards or
-high-fidelity sense, an O-RAN RIC/xApp/rApp, or a deployable closed-loop controller. The
-class named `NetworkTwin` is a copied topology/configuration/KPI state container. Its
-`TwinSimulator` is a bounded deterministic response surrogate, not a learned, calibrated,
-or causal predictor.
+- Generates deterministic five-minute KPI aggregates for a configurable 20-cell
+  synthetic topology and eight fault scenarios.
+- Combines hard KPI thresholds, past-only rolling statistics, and an Isolation Forest
+  trained on a separate normal-data seed.
+- Produces evidence-based diagnoses with confidence, explanations, and a next diagnostic
+  check; ambiguous mobility evidence remains explicitly unresolved.
+- Maps diagnosed congestion to a conservative capacity candidate and escalates other
+  diagnoses for human review.
+- Evaluates proposed actions against copied topology, configuration, and KPI state using
+  bounded deterministic response equations.
+- Applies fail-closed checks for stale evidence, low confidence, impacted-cell risk,
+  action size, chronology, cooldown, and KPI safety limits.
+- Exposes the workflow through a CLI, FastAPI service, Streamlit dashboard, Prometheus
+  metrics, and a reproducible closed-set evaluation.
 
-The “AI” component is one unsupervised Isolation Forest. Rules remain responsible for
-hard thresholds and root-cause mapping. There is no deep learning, online learning,
-foundation model, 6G implementation, O-RAN interface, operator data, or southbound
-actuation. Only a congestion diagnosis produces an automated shadow candidate; every
-other diagnosis is escalated for human review.
+## Example scenario
 
-## Pipeline
+Run the default congestion replay:
+
+```bash
+uv run --frozen ai-ran-assurance demo --scenario congestion
+```
+
+The current deterministic demo follows this sequence:
+
+1. **Detection:** high PRB utilization is identified in `CELL-003` during the injected
+   congestion interval.
+2. **Diagnosis:** the KPI pattern is classified as congestion with supporting evidence
+   and a confidence score.
+3. **Recommendation:** the policy proposes a 15% additional-capacity candidate for
+   shadow evaluation.
+4. **State simulation:** copied state is evaluated with bounded response equations,
+   producing explicit before/after KPI values and assumptions.
+5. **Guardrail decision:** the default replay is rejected because its evidence is stale
+   at evaluation time and the response confidence is below the configured minimum.
+6. **Shadow report:** the result is recorded as `shadow_rejected`; no network command is
+   produced or sent.
+
+This path is intentionally useful even when the outcome is rejection: it demonstrates
+that a recommendation cannot bypass the final safety boundary.
+
+## System workflow
 
 ```mermaid
 flowchart LR
-    A["Strict packaged/YAML configuration"] --> B["20-cell synthetic topology"]
-    B --> C["Correlated five-minute KPI aggregates"]
-    D["One injected synthetic fault"] --> C
-    C --> E["Hard thresholds and past-only rolling statistics"]
-    C --> F["Isolation Forest fitted to a separate normal seed"]
-    E --> G["Truth-independent anomaly fusion"]
-    F --> G
-    G --> H["Conservative KPI-pattern diagnosis"]
-    H --> I["Candidate action or human escalation"]
-    I --> J["Copied state and bounded response surrogate"]
-    J --> K["Fail-closed guardrails"]
-    K --> L["Shadow report only"]
+    A["Synthetic KPI telemetry"] --> B["Threshold and rolling detector"]
+    A --> C["Isolation Forest"]
+    B --> D["Truth-independent anomaly fusion"]
+    C --> D
+    D --> E["KPI-pattern diagnosis"]
+    E --> F["Recommendation or human review"]
+    F --> G["Copied-state response simulation"]
+    G --> H["Fail-closed guardrails"]
+    H --> I["Shadow report"]
 ```
 
-Synthetic ground truth is attached to generated records for evaluation. The workflow
-does not use scenario target cells, active windows, or labels to select anomalies or
-diagnoses. Training seed `17` and evaluation seeds `101`, `211`, and `307` are separate
-in the committed benchmark.
+Ground truth is retained for evaluation only. It is not used to select workflow
+anomalies, infer diagnoses, or approve actions.
 
-## Synthetic domain model
+<!-- TODO: Add docs/assets/workflow-demo.gif when a stable capture is available. -->
 
-The generator represents twenty cells with four directed neighbor choices per cell. A
-24-hour baseline includes morning/evening demand peaks, cell-specific bias, and seeded
-autoregressive load, signal, and interference state. Offered demand, achievable radio
-throughput, PRB use, queue-related latency, BLER, RRC success, handover success, call
-drops, and availability are related by transparent equations.
+## Architecture
 
-These are dimensional engineering abstractions, not vendor counter definitions or
-3GPP-compliant models. Scenario labels are intentionally more specific than the evidence
-can always support:
+| Layer | Responsibility |
+| --- | --- |
+| [Configuration](src/ai_ran_assurance/config.py) | Validates packaged or external network, threshold, and scenario YAML. |
+| [Simulation](src/ai_ran_assurance/simulation/) | Builds topology, generates correlated KPIs, and applies synthetic faults. |
+| [Detection](src/ai_ran_assurance/detection/) | Runs rule, rolling-statistic, and Isolation Forest detection. |
+| [Diagnosis](src/ai_ran_assurance/diagnosis/) | Maps compound KPI evidence to conservative root-cause categories. |
+| [State and response](src/ai_ran_assurance/twin/) | Copies network state, evaluates bounded responses, and enforces guardrails. |
+| [Workflow](src/ai_ran_assurance/workflow.py) | Orchestrates telemetry, detection, diagnosis, recommendation, and reporting. |
+| [Interfaces](src/ai_ran_assurance/api/) | Provides API contracts, runtime state, health, and Prometheus endpoints. |
+| [Evaluation](src/ai_ran_assurance/evaluation/) | Scores deterministic scenario episodes without exposing truth to the workflow. |
 
-| Synthetic scenario | Injected evidence | Workflow interpretation |
-|---|---|---|
-| Congestion | PRB/queue pressure, throughput and RRC loss | Congestion candidate |
-| Interference | SINR loss, BLER and drop rise | Interference only when the compound signature is strong |
-| Missing neighbor | Handover loss and drops | Ambiguous mobility evidence; human review |
-| Cell outage/degradation | Availability, access, mobility, throughput collapse | Outage only for a sufficiently compound collapse |
-| Transport latency | Delay rise without radio saturation | Transport candidate; human review |
-| Coverage degradation | RSRP/SINR loss plus access/drop effects | Coverage only when the compound signature is strong |
-| BLER increase | BLER, throughput and drop effects | Radio-quality candidate; human review |
-| Mobility misconfiguration | Handover loss and drops | Ambiguous mobility evidence; human review |
+The dependency direction is domain → simulation/detection/diagnosis/state response →
+workflow/evaluation/interfaces. See the [architecture and safety boundary](docs/architecture.md)
+for component-level data-flow and trust-boundary details.
 
-## Install and reproduce
+## Quick start
 
 Python 3.11 or 3.12 and [`uv`](https://docs.astral.sh/uv/) are recommended.
 
@@ -80,124 +101,111 @@ Python 3.11 or 3.12 and [`uv`](https://docs.astral.sh/uv/) are recommended.
 git clone https://github.com/omidrahimirad/ai-ran-digital-twin-assurance.git
 cd ai-ran-digital-twin-assurance
 uv sync --frozen --extra dev
+uv run --frozen ai-ran-assurance demo --scenario congestion
 ```
 
-The package includes validated default YAML, so it also works outside the repository:
+Generate a small deterministic CSV sample:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e '.[dev]'
-ai-ran-assurance demo --scenario congestion
+uv run --frozen ai-ran-assurance generate-data --steps 6 --seed 42
 ```
 
-Set `AI_RAN_CONFIG_DIR` to a directory containing `network.yaml`, `thresholds.yaml`, and
-`scenarios.yaml` to use an explicit configuration. Unknown fields, inconsistent fault
-truth, unknown cells/KPIs, invalid bounds, naive timestamps, and non-finite numeric values
-are rejected.
-
-## Run the actual surfaces
-
-```bash
-# Deterministic CSV sample
-uv run ai-ran-assurance generate-data --steps 6 --seed 42
-
-# Synthetic telemetry-to-shadow-report replay
-uv run ai-ran-assurance demo --scenario congestion
-
-# Local-only API by default, plus dashboard in another terminal
-uv run ai-ran-assurance serve-api
-uv run streamlit run dashboard/app.py
-```
-
-Valid scenarios are `congestion`, `interference`, `missing_neighbor`, `outage`,
+Available scenarios are `congestion`, `interference`, `missing_neighbor`, `outage`,
 `transport_latency`, `coverage`, `bler`, and `mobility`.
 
-The FastAPI surface exposes health, topology, telemetry, anomalies, diagnoses,
-recommendations, shadow decisions, metrics, scenario replay, and action validation.
-Action validation accepts only an action and a timestamp that exists in stored telemetry;
-the server recomputes the response and uses server time for freshness. Client-supplied
-predictions or evaluation times are rejected. There is no authentication or rate limiting,
-so this demo API should not be exposed to an untrusted network.
+The default validated YAML is packaged with the application. To supply an alternative
+configuration, set `AI_RAN_CONFIG_DIR` to a directory containing `network.yaml`,
+`thresholds.yaml`, and `scenarios.yaml`.
 
-## Docker
+For containers:
 
 ```bash
-docker build -t ai-ran-assurance .
 docker compose config --quiet
 docker compose up --build
 ```
 
-- API and OpenAPI: <http://localhost:8000/docs>
-- dashboard: <http://localhost:8501>
-- Prometheus exposition: <http://localhost:8000/metrics>
+## Dashboard and API
 
-The multi-stage image installs the locked runtime environment, runs as UID 10001, and
-contains no command adapter or secret. Compose explicitly opts into container-wide binds
-and applies `no-new-privileges`; local CLI startup binds only to `127.0.0.1`.
-
-## Reproduced evaluation
+Start the interfaces in separate terminals:
 
 ```bash
-uv run pytest --cov=ai_ran_assurance \
-  --cov-report=term-missing --cov-report=json:artifacts/coverage.json
-uv run python scripts/run_benchmark.py
+uv run --frozen ai-ran-assurance serve-api
+uv run --frozen streamlit run dashboard/app.py \
+  --server.address=127.0.0.1 \
+  --browser.gatherUsageStats=false
 ```
 
-The benchmark runs 48 closed-set episodes: eight configured scenarios, three holdout
-seeds, and severities `0.55` and `0.8`. Truth is used by the evaluator for scoring, not by
-the workflow. The committed result is intentionally not perfect:
+- OpenAPI: <http://localhost:8000/docs>
+- Health: <http://localhost:8000/health>
+- Prometheus metrics: <http://localhost:8000/metrics>
+- Dashboard: <http://localhost:8501>
+
+The API exposes topology, telemetry, anomalies, diagnoses, recommendations, shadow
+decisions, metrics, scenario replay, and server-side action validation. Local CLI startup
+binds to `127.0.0.1` by default.
+
+<!-- TODO: Add docs/assets/dashboard-overview.png after the dashboard capture is finalized. -->
+
+## Reproduced evaluation summary
+
+The committed evaluation covers 48 closed-set synthetic episodes across eight scenarios,
+three evaluation seeds, and two severities. These are reproduced software-test results,
+not field-network performance measurements.
 
 | Metric | Reproduced result |
-|---|---:|
-| Telemetry samples / episode runs | 220,800 / 48 |
-| Precision / recall / F1 | 1.0000 / 0.5399 / 0.7012 |
-| Fault-episode detection rate | 79.17% |
+| --- | ---: |
+| Fault-episode detection | 79.17% |
+| Precision | 1.0000 |
+| Recall | 0.5399 |
+| F1 | 0.7012 |
 | RCA accuracy on diagnosed episodes | 52.63% |
-| Ambiguous diagnosed episodes | 18 |
-| Unsafe/escalation guardrail cases rejected | 16 / 16 |
-| Safe guardrail control approved | 1 / 1 |
-| API health smoke | 25 / 25 successful |
-| Branch-aware package coverage | at least 94% |
+| Tests | 70 passing |
+| Branch coverage | 94.29% in Linux CI |
 
-Missed episodes are counted as false negatives. RCA accuracy excludes undetected
-episodes and must therefore be read with the episode detection rate. The zero sample
-false-alarm rate is only an observation on generated normal intervals from the same
-closed-set family. No API latency is reported because an in-process client is not a load
-or service benchmark. See [the generated results](docs/results.md).
-
-## Quality and security gates
+Run the same checks with:
 
 ```bash
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy src
-uv run pytest --cov=ai_ran_assurance --cov-report=term-missing
-make security
+uv run --frozen pytest --cov=ai_ran_assurance --cov-report=term-missing
+uv run --frozen python scripts/run_benchmark.py
 ```
 
-The 70 tests cover deterministic generation, KPI relationships, contaminated-training
-rejection, truth-independent workflow selection, ambiguous RCA, conservative action
-effects, impacted-cell checks, stale/future telemetry, low confidence, cooldown, strict
-API schemas, server-side prediction, CLI/API/E2E behavior, and benchmark generation. The
-security target audits the exact locked runtime export and statically scans Python code.
-Coverage is a separate quality gate because branch coverage varies slightly by platform
-(94.29% on Linux CI and 94.43% on the reproduced macOS run). CI repeats quality checks on
-Python 3.11/3.12, verifies generated artifacts on 3.11,
-validates Compose, and builds the image.
+See [reproduced evaluation results](docs/results.md) for the complete protocol,
+scenario-level outcomes, metric interpretation, and guardrail regression results.
 
-## Remaining limitations
+## Scope and limitations
 
-- No UE, bearer, packet, scheduler, alarm, PM counter, propagation, fading, beam,
-  multi-carrier, energy, or protocol model exists.
-- Faults are single and deterministic; missing data, concept drift, concurrent faults,
-  topology changes, and external datasets are not evaluated.
-- Thresholds, RCA weights, response factors, and confidence values are illustrative and
-  uncalibrated.
-- The in-memory API has no persistence, identity, authorization, multi-user isolation,
-  high availability, or operator approval workflow.
-- Guardrail approval means only that a candidate may appear in a shadow report.
+- All telemetry, faults, and evaluation results are synthetic; there is no live-network
+  ingestion or operator dataset.
+- The project does not implement an O-RAN RIC, xApp/rApp, O1/A1/E2 integration, or
+  standards compliance validation.
+- No network actuation path exists. An approved decision is only eligible for inclusion
+  in a shadow report.
+- `NetworkTwin` holds copied topology, configuration, and KPI state. Its simulator is a
+  deterministic response model, not an RF simulator, calibrated causal model, or
+  standards-grade digital twin.
+- Thresholds, root-cause weights, action effects, and confidence values are illustrative
+  and uncalibrated.
+- The in-memory interfaces do not provide authentication, persistence, high availability,
+  or multi-user isolation and should not be exposed to an untrusted network.
 
-Read [architecture](docs/architecture.md), [methodology](docs/methodology.md),
-[assumptions](docs/assumptions.md), [limitations](docs/limitations.md), and
-[future-RAN boundaries](docs/six_g_alignment.md) for the full audit trail.
+The [limitations](docs/limitations.md) page provides the full modeling, ML, safety, and
+operational boundaries.
+
+## Detailed documentation
+
+- [Architecture and safety boundary](docs/architecture.md) — components, dependency
+  direction, state-surrogate boundary, and runtime trust model.
+- [Methodology](docs/methodology.md) — synthetic KPI equations, fault injection,
+  detection, diagnosis, response rules, guardrails, and evaluation protocol.
+- [Assumptions](docs/assumptions.md) — explicit network, telemetry, training, safety,
+  and reproducibility assumptions.
+- [Reproduced evaluation results](docs/results.md) — complete benchmark results and
+  scenario-level outcomes.
+- [Limitations](docs/limitations.md) — telecom, modeling, ML, safety, and operational
+  constraints.
+- [Future-RAN relevance and standards boundaries](docs/six_g_alignment.md) — precise
+  relationship to future-network research topics without compliance claims.
+
+## License
+
+Released under the [MIT License](LICENSE).
