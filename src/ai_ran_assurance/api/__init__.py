@@ -1,1 +1,1 @@
-"""FastAPI interface for synthetic closed-loop assurance."""
+"""FastAPI interface for the synthetic shadow-assurance pipeline."""

@@ -11,10 +11,34 @@ from ai_ran_assurance.domain.models import (
 
 
 class GuardrailValidator:
-    """Policy checks for candidate actions; approval remains shadow-only."""
+    """Fail-closed policy checks; approval remains shadow-report-only."""
 
     def __init__(self, settings: ThresholdSettings) -> None:
         self.settings = settings
+
+    def _check_cell(
+        self,
+        label: str,
+        before: dict[str, float],
+        predicted: dict[str, float],
+        violations: list[str],
+    ) -> None:
+        prefix = f"{label}: "
+        if predicted["handover_success_pct"] < self.settings.handover_success_min_pct:
+            violations.append(prefix + "predicted handover success is below threshold")
+        if predicted["rrc_success_pct"] < self.settings.rrc_success_min_pct:
+            violations.append(prefix + "predicted RRC success is below threshold")
+        if predicted["availability_pct"] < self.settings.availability_min_pct:
+            violations.append(prefix + "predicted availability is below threshold")
+        availability_drop = before["availability_pct"] - predicted["availability_pct"]
+        if availability_drop > self.settings.availability_max_drop_pct:
+            violations.append(prefix + "predicted availability decrease exceeds the limit")
+        if predicted["latency_ms"] > self.settings.latency_max_ms:
+            violations.append(prefix + "predicted latency exceeds threshold")
+        if predicted["call_drop_pct"] > self.settings.call_drop_max_pct:
+            violations.append(prefix + "predicted call-drop rate exceeds threshold")
+        if predicted["bler_pct"] > self.settings.bler_max_pct:
+            violations.append(prefix + "predicted BLER exceeds threshold")
 
     def validate(
         self,
@@ -27,32 +51,71 @@ class GuardrailValidator:
     ) -> GuardrailResult:
         now = evaluated_at or datetime.now(UTC)
         violations: list[str] = []
-        predicted = prediction.predicted_kpis
-        before = prediction.before_kpis
-        if predicted["handover_success_pct"] < self.settings.handover_success_min_pct:
-            violations.append("predicted handover success is below the safety threshold")
-        if predicted["rrc_success_pct"] < self.settings.rrc_success_min_pct:
-            violations.append("predicted RRC success is below the safety threshold")
-        availability_drop = before["availability_pct"] - predicted["availability_pct"]
-        if availability_drop > self.settings.availability_max_drop_pct:
-            violations.append("predicted availability decrease exceeds the allowed threshold")
-        if predicted["latency_ms"] > self.settings.latency_max_ms:
-            violations.append("predicted latency exceeds the safety threshold")
-        delta = abs(float(action.parameters.get("parameter_delta", 0.0)))
-        if delta > self.settings.max_parameter_delta:
-            violations.append("configuration parameter delta exceeds the allowed limit")
+        if now.tzinfo is None or now.utcoffset() is None:
+            raise ValueError("evaluated_at must be timezone-aware")
+        if telemetry_timestamp.tzinfo is None or telemetry_timestamp.utcoffset() is None:
+            raise ValueError("telemetry_timestamp must be timezone-aware")
+        if action.action_id != prediction.action_id:
+            violations.append("action and prediction identifiers do not match")
+        if action.cell_id != prediction.cell_id:
+            violations.append("action and prediction cells do not match")
+
+        self._check_cell(
+            action.cell_id,
+            prediction.before_kpis,
+            prediction.predicted_kpis,
+            violations,
+        )
+        for cell_id, predicted in prediction.impacted_cell_kpis.items():
+            self._check_cell(
+                cell_id,
+                prediction.impacted_cell_before_kpis[cell_id],
+                predicted,
+                violations,
+            )
+
+        if action.action_type is ActionType.ROLLBACK_PARAMETER:
+            delta = abs(
+                float(action.parameters["previous_value"])
+                - float(action.parameters["current_value"])
+            )
+            if delta > self.settings.max_parameter_delta:
+                violations.append("configuration parameter delta exceeds the allowed limit")
+        if action.action_type is ActionType.STEER_TRAFFIC and (
+            float(action.parameters["traffic_delta_pct"]) > self.settings.max_traffic_steering_pct
+        ):
+            violations.append("traffic-steering percentage exceeds the allowed limit")
+        if action.action_type is ActionType.ACTIVATE_CAPACITY and (
+            float(action.parameters["capacity_delta_pct"]) > self.settings.max_capacity_increase_pct
+        ):
+            violations.append("capacity increase exceeds the allowed limit")
+
         cooldown = timedelta(minutes=self.settings.cooldown_minutes)
         for previous in action_history or []:
+            elapsed = now - previous.proposed_at
+            if elapsed < timedelta(0):
+                violations.append("action history contains a future timestamp")
+                break
             if (
                 previous.cell_id == action.cell_id
                 and previous.action_type == action.action_type
-                and now - previous.proposed_at < cooldown
+                and elapsed < cooldown
             ):
                 violations.append("same action is inside the configured cooldown period")
                 break
+
+        future_skew = timedelta(seconds=self.settings.max_telemetry_future_skew_seconds)
         age = now - telemetry_timestamp
-        if age > timedelta(minutes=self.settings.telemetry_max_age_minutes):
+        if age < -future_skew:
+            violations.append("telemetry timestamp is unacceptably far in the future")
+        elif age > timedelta(minutes=self.settings.telemetry_max_age_minutes):
             violations.append("telemetry is stale")
+        if action.proposed_at < telemetry_timestamp:
+            violations.append("action was proposed before its telemetry evidence")
+        if action.proposed_at - now > future_skew:
+            violations.append("action proposal timestamp is unacceptably far in the future")
+        if action.diagnosis_confidence < self.settings.diagnosis_confidence_min:
+            violations.append("diagnosis confidence is below the required minimum")
         if prediction.confidence < self.settings.prediction_confidence_min:
             violations.append("prediction confidence is below the required minimum")
         if action.action_type is ActionType.HUMAN_REVIEW:
@@ -80,5 +143,5 @@ def shadow_decision(
         prediction=prediction,
         guardrail=guardrail,
         status=status,
-        note="Shadow-mode report only. No command was or can be sent to a real RAN.",
+        note="Shadow report only. No command was or can be sent to a real RAN.",
     )

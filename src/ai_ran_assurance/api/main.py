@@ -1,8 +1,10 @@
+import logging
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from threading import Lock
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Request, Response
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 
 from ai_ran_assurance.api.schemas import (
@@ -20,16 +22,23 @@ from ai_ran_assurance.domain.models import (
     RootCauseDiagnosis,
     ShadowDecision,
 )
-from ai_ran_assurance.twin import GuardrailValidator
+from ai_ran_assurance.twin import (
+    ActionSimulationError,
+    GuardrailValidator,
+    NetworkTwin,
+    TwinSimulator,
+)
 from ai_ran_assurance.workflow import ClosedLoopEngine, ScenarioRun
 
 REQUESTS = Counter("ai_ran_api_requests_total", "API requests", ["path", "method"])
 LATENCY = Histogram("ai_ran_api_latency_seconds", "API latency", ["path"])
+LOGGER = logging.getLogger(__name__)
 
 
 class AppState:
     engine: ClosedLoopEngine | None = None
     latest: ScenarioRun | None = None
+    lock = Lock()
 
 
 STATE = AppState()
@@ -48,22 +57,27 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(
-    title="AI-Assisted RAN Digital Twin Assurance",
-    description="Synthetic-data, simulation-based, shadow-mode engineering prototype.",
+    title="Synthetic AI-Assisted RAN Assurance",
+    description="Synthetic-data shadow assurance with a bounded response surrogate.",
     version="0.1.0",
     lifespan=lifespan,
 )
 
 
 @app.middleware("http")
-async def observe(request: object, call_next: object) -> Response:
-    path = getattr(getattr(request, "url", None), "path", "unknown")
-    method = getattr(request, "method", "unknown")
+async def observe(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    method = request.method
     started = time.perf_counter()
-    response = await call_next(request)  # type: ignore[operator]
-    REQUESTS.labels(path=path, method=method).inc()
-    LATENCY.labels(path=path).observe(time.perf_counter() - started)
-    return response  # type: ignore[no-any-return]
+    try:
+        return await call_next(request)
+    finally:
+        # Route templates bound Prometheus label cardinality; raw paths let arbitrary
+        # 404 requests create an unbounded time series.
+        path = str(getattr(request.scope.get("route"), "path", "unmatched"))
+        REQUESTS.labels(path=path, method=method).inc()
+        LATENCY.labels(path=path).observe(time.perf_counter() - started)
 
 
 @app.get("/health")
@@ -84,8 +98,10 @@ def network() -> NetworkTopology:
 @app.post("/scenarios/run", response_model=ScenarioRunResponse)
 def run_scenario(request: ScenarioRunRequest) -> ScenarioRunResponse:
     try:
-        STATE.latest = engine().run(request.scenario, steps=request.steps)
+        with STATE.lock:
+            STATE.latest = engine().run(request.scenario, steps=request.steps)
     except ValueError as exc:
+        LOGGER.info("scenario_run_rejected scenario=%r reason=%s", request.scenario, exc)
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return ScenarioRunResponse(
         scenario=STATE.latest.scenario.name,
@@ -97,9 +113,10 @@ def run_scenario(request: ScenarioRunRequest) -> ScenarioRunResponse:
 
 
 def _latest() -> ScenarioRun:
-    if STATE.latest is None:
-        STATE.latest = engine().run("congestion")
-    return STATE.latest
+    with STATE.lock:
+        if STATE.latest is None:
+            STATE.latest = engine().run("congestion")
+        return STATE.latest
 
 
 @app.get("/telemetry", response_model=list[KPISample])
@@ -129,13 +146,35 @@ def decisions() -> list[ShadowDecision]:
 
 @app.post("/actions/validate", response_model=ActionValidationResponse)
 def validate_action(request: ActionValidationRequest) -> ActionValidationResponse:
+    run = _latest()
+    timestamp_samples = [
+        sample for sample in run.telemetry if sample.timestamp == request.telemetry_timestamp
+    ]
+    if not timestamp_samples or request.action.cell_id not in {
+        sample.cell_id for sample in timestamp_samples
+    }:
+        raise HTTPException(
+            status_code=422,
+            detail="telemetry timestamp and action cell must match stored synthetic telemetry",
+        )
+    try:
+        prediction = TwinSimulator().simulate(
+            NetworkTwin(run.topology, timestamp_samples), request.action
+        )
+    except (ActionSimulationError, ValueError) as exc:
+        LOGGER.info(
+            "action_validation_rejected action_id=%r cell_id=%r reason=%s",
+            request.action.action_id,
+            request.action.cell_id,
+            exc,
+        )
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     result = GuardrailValidator(engine().config.thresholds).validate(
         request.action,
-        request.prediction,
+        prediction,
         telemetry_timestamp=request.telemetry_timestamp,
-        evaluated_at=request.evaluated_at,
     )
-    return ActionValidationResponse(result=result)
+    return ActionValidationResponse(result=result, prediction=prediction)
 
 
 @app.get("/metrics", include_in_schema=False)

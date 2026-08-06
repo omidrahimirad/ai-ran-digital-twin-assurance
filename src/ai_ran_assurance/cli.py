@@ -12,7 +12,7 @@ from ai_ran_assurance.simulation import KPIGenerator, build_network
 from ai_ran_assurance.workflow import ClosedLoopEngine
 
 app = typer.Typer(
-    help="Synthetic, shadow-mode AI-assisted RAN digital-twin assurance commands.",
+    help="Synthetic, shadow-mode AI-assisted RAN assurance commands.",
     no_args_is_help=True,
 )
 
@@ -70,7 +70,7 @@ def benchmark() -> None:
 
 @app.command("serve-api")
 def serve_api(
-    host: Annotated[str, typer.Option(help="Bind host.")] = "0.0.0.0",
+    host: Annotated[str, typer.Option(help="Bind host.")] = "127.0.0.1",
     port: Annotated[int, typer.Option(help="Bind port.")] = 8000,
 ) -> None:
     """Serve the FastAPI interface."""

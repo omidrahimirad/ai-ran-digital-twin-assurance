@@ -1,12 +1,22 @@
 from copy import deepcopy
 
-from ai_ran_assurance.domain.models import KPISample, NetworkTopology
+from ai_ran_assurance.domain.models import CellConfiguration, KPISample, NetworkTopology
 
 
 class NetworkTwin:
     """Copyable topology, configuration, traffic, and latest-KPI representation."""
 
     def __init__(self, topology: NetworkTopology, telemetry: list[KPISample]) -> None:
+        if not telemetry:
+            raise ValueError("twin telemetry cannot be empty")
+        if len({sample.cell_id for sample in telemetry}) != len(telemetry):
+            raise ValueError("twin telemetry must contain one sample per cell")
+        if len({sample.timestamp for sample in telemetry}) != 1:
+            raise ValueError("twin telemetry must represent one timestamp")
+        known_cells = {cell.cell_id for cell in topology.cells}
+        unknown = {sample.cell_id for sample in telemetry} - known_cells
+        if unknown:
+            raise ValueError(f"twin telemetry contains unknown cells: {sorted(unknown)}")
         self.topology = topology.model_copy(deep=True)
         self.current_kpis = {sample.cell_id: sample.model_copy(deep=True) for sample in telemetry}
         self.current_traffic = {sample.cell_id: sample.prb_utilization_pct for sample in telemetry}
@@ -27,21 +37,19 @@ class NetworkTwin:
             if relation.source_cell == cell_id and relation.enabled
         ]
 
-    def restore_neighbor(self, cell_id: str) -> str | None:
+    def restore_neighbor(self, cell_id: str, target_cell: str) -> None:
         for relation in self.topology.neighbor_relations:
-            if relation.source_cell == cell_id and not relation.enabled:
+            if relation.source_cell == cell_id and relation.target_cell == target_cell:
+                if relation.enabled:
+                    raise ValueError("requested neighbor relation is already enabled")
                 relation.enabled = True
-                return relation.target_cell
-        candidates = [
-            cell.cell_id
-            for cell in self.topology.cells
-            if cell.cell_id != cell_id and cell.cell_id not in self.neighbors(cell_id)
-        ]
-        if candidates:
-            from ai_ran_assurance.domain.models import NeighborRelation
+                return
+        raise ValueError("requested disabled neighbor relation does not exist")
 
-            self.topology.neighbor_relations.append(
-                NeighborRelation(source_cell=cell_id, target_cell=candidates[0])
+    def cell_configuration(self, cell_id: str) -> CellConfiguration:
+        try:
+            return next(
+                cell.configuration for cell in self.topology.cells if cell.cell_id == cell_id
             )
-            return candidates[0]
-        return None
+        except StopIteration as exc:
+            raise ValueError(f"unknown cell {cell_id!r} in twin topology") from exc

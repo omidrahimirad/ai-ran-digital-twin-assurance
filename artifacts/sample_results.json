@@ -1,84 +1,113 @@
 {
-  "disclaimer": "Reported results are based on deterministic synthetic RAN scenarios and do not represent performance on a commercial mobile network.",
-  "benchmark_seed": 42,
-  "scenario_count": 8,
-  "telemetry_sample_count": 11520,
+  "disclaimer": "Reported results are based on closed-set synthetic RAN scenarios and do not represent performance on a commercial mobile network.",
+  "protocol": {
+    "type": "closed-set synthetic stress test",
+    "training_seed": 17,
+    "evaluation_seeds": [
+      101,
+      211,
+      307
+    ],
+    "evaluation_severities": [
+      0.55,
+      0.8
+    ],
+    "fault_scenarios": 8,
+    "truth_used_only_for_scoring": true
+  },
+  "scenario_run_count": 48,
+  "telemetry_sample_count": 220800,
   "detection": {
     "precision": 1.0,
-    "recall": 1.0,
-    "f1_score": 1.0,
+    "recall": 0.539931,
+    "f1_score": 0.70124,
     "false_alarm_rate": 0.0,
-    "true_positives": 96,
+    "true_positives": 311,
     "false_positives": 0,
-    "true_negatives": 11424,
-    "false_negatives": 0
+    "true_negatives": 220224,
+    "false_negatives": 265
   },
-  "average_detection_delay_minutes": 0.0,
-  "root_cause_accuracy": 1.0,
-  "unsafe_actions_rejected_pct": 100.0,
-  "unsafe_action_cases": 8,
-  "api_latency_ms": {
-    "mean": 0.968,
-    "p95": 1.448,
-    "samples": 25
+  "fault_episode_detection_rate": 0.791667,
+  "average_detection_delay_minutes_on_detected_episodes": 0.0,
+  "root_cause": {
+    "accuracy_on_diagnosed_episodes": 0.526316,
+    "diagnosed_episodes": 38,
+    "correct_episodes": 20,
+    "ambiguous_episodes": 18
   },
-  "test_coverage_pct": 98.32,
+  "guardrail_regression": {
+    "safe_control_approved": 1,
+    "unsafe_or_escalation_cases": 16,
+    "cases_rejected_or_escalated": 16,
+    "regression_pass_rate": 1.0
+  },
+  "runtime_observation": {
+    "api_health_smoke": {
+      "requests": 25,
+      "all_successful": true,
+      "timing_reported": false,
+      "scope": "in-process API health smoke; no latency or load claim"
+    }
+  },
+  "quality_context": {
+    "test_coverage_pct": 94.43
+  },
   "scenarios": {
     "congestion": {
-      "ground_truth": "congestion",
-      "diagnosed": "congestion",
-      "root_cause_correct": true,
-      "detection_delay_minutes": 0.0,
-      "shadow_status": "shadow_approved"
+      "episodes": 6,
+      "detected_episodes": 5,
+      "diagnosed_episodes": 5,
+      "correct_root_causes": 5,
+      "ambiguous_root_causes": 0
     },
     "interference": {
-      "ground_truth": "interference",
-      "diagnosed": "interference",
-      "root_cause_correct": true,
-      "detection_delay_minutes": 0.0,
-      "shadow_status": "shadow_approved"
+      "episodes": 6,
+      "detected_episodes": 6,
+      "diagnosed_episodes": 6,
+      "correct_root_causes": 3,
+      "ambiguous_root_causes": 3
     },
     "missing_neighbor": {
-      "ground_truth": "neighbor_relation",
-      "diagnosed": "neighbor_relation",
-      "root_cause_correct": true,
-      "detection_delay_minutes": 0.0,
-      "shadow_status": "shadow_approved"
+      "episodes": 6,
+      "detected_episodes": 6,
+      "diagnosed_episodes": 6,
+      "correct_root_causes": 0,
+      "ambiguous_root_causes": 6
     },
     "outage": {
-      "ground_truth": "cell_outage",
-      "diagnosed": "cell_outage",
-      "root_cause_correct": true,
-      "detection_delay_minutes": 0.0,
-      "shadow_status": "shadow_rejected"
+      "episodes": 6,
+      "detected_episodes": 6,
+      "diagnosed_episodes": 6,
+      "correct_root_causes": 3,
+      "ambiguous_root_causes": 3
     },
     "transport_latency": {
-      "ground_truth": "transport",
-      "diagnosed": "transport",
-      "root_cause_correct": true,
-      "detection_delay_minutes": 0.0,
-      "shadow_status": "human_review_required"
+      "episodes": 6,
+      "detected_episodes": 3,
+      "diagnosed_episodes": 3,
+      "correct_root_causes": 3,
+      "ambiguous_root_causes": 0
     },
     "coverage": {
-      "ground_truth": "coverage",
-      "diagnosed": "coverage",
-      "root_cause_correct": true,
-      "detection_delay_minutes": 0.0,
-      "shadow_status": "shadow_approved"
+      "episodes": 6,
+      "detected_episodes": 6,
+      "diagnosed_episodes": 6,
+      "correct_root_causes": 3,
+      "ambiguous_root_causes": 3
     },
     "bler": {
-      "ground_truth": "radio_quality",
-      "diagnosed": "radio_quality",
-      "root_cause_correct": true,
-      "detection_delay_minutes": 0.0,
-      "shadow_status": "human_review_required"
+      "episodes": 6,
+      "detected_episodes": 3,
+      "diagnosed_episodes": 3,
+      "correct_root_causes": 3,
+      "ambiguous_root_causes": 0
     },
     "mobility": {
-      "ground_truth": "mobility_configuration",
-      "diagnosed": "mobility_configuration",
-      "root_cause_correct": true,
-      "detection_delay_minutes": 0.0,
-      "shadow_status": "shadow_approved"
+      "episodes": 6,
+      "detected_episodes": 3,
+      "diagnosed_episodes": 3,
+      "correct_root_causes": 0,
+      "ambiguous_root_causes": 3
     }
   }
 }

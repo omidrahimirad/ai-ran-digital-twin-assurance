@@ -9,29 +9,14 @@ class ActionRecommender:
     """Map diagnoses to vendor-neutral candidate actions for shadow validation."""
 
     _mapping: dict[RootCauseCategory, tuple[ActionType, dict[str, float | str]]] = {
-        RootCauseCategory.CONGESTION: (ActionType.ACTIVATE_CAPACITY, {"capacity_delta_pct": 25.0}),
-        RootCauseCategory.INTERFERENCE: (
-            ActionType.STEER_TRAFFIC,
-            {"traffic_delta_pct": 15.0},
-        ),
-        RootCauseCategory.NEIGHBOR_RELATION: (
-            ActionType.RESTORE_NEIGHBOR,
-            {"relation": "best_disabled_or_missing_candidate"},
-        ),
-        RootCauseCategory.CELL_OUTAGE: (
-            ActionType.STEER_TRAFFIC,
-            {"traffic_delta_pct": 20.0},
-        ),
+        RootCauseCategory.CONGESTION: (ActionType.ACTIVATE_CAPACITY, {"capacity_delta_pct": 15.0}),
+        RootCauseCategory.INTERFERENCE: (ActionType.HUMAN_REVIEW, {}),
+        RootCauseCategory.NEIGHBOR_RELATION: (ActionType.HUMAN_REVIEW, {}),
+        RootCauseCategory.CELL_OUTAGE: (ActionType.HUMAN_REVIEW, {}),
         RootCauseCategory.TRANSPORT: (ActionType.HUMAN_REVIEW, {}),
-        RootCauseCategory.COVERAGE: (
-            ActionType.ROLLBACK_PARAMETER,
-            {"parameter": "antenna_tilt_deg", "parameter_delta": -2.0},
-        ),
+        RootCauseCategory.COVERAGE: (ActionType.HUMAN_REVIEW, {}),
         RootCauseCategory.RADIO_QUALITY: (ActionType.HUMAN_REVIEW, {}),
-        RootCauseCategory.MOBILITY_CONFIGURATION: (
-            ActionType.ROLLBACK_PARAMETER,
-            {"parameter": "handover_margin_db", "parameter_delta": -2.0},
-        ),
+        RootCauseCategory.MOBILITY_CONFIGURATION: (ActionType.HUMAN_REVIEW, {}),
         RootCauseCategory.UNKNOWN: (ActionType.HUMAN_REVIEW, {}),
         RootCauseCategory.NORMAL: (ActionType.HUMAN_REVIEW, {}),
     }
@@ -49,7 +34,8 @@ class ActionRecommender:
             action_id=str(identifier),
             cell_id=diagnosis.cell_id,
             action_type=action_type,
-            parameters=parameters,
+            parameters=parameters.copy(),
+            diagnosis_confidence=diagnosis.confidence,
             rationale=(
                 f"Shadow-mode candidate for diagnosed {diagnosis.probable_root_cause.value}; "
                 "no command will be sent to a network."

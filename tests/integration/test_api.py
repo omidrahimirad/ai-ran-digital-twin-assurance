@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from fastapi.testclient import TestClient
 
 
@@ -17,6 +19,13 @@ def test_read_endpoints_and_default_run(client: TestClient) -> None:
     assert "ai_ran_api_requests_total" in client.get("/metrics").text
 
 
+def test_metrics_use_bounded_route_labels(client: TestClient) -> None:
+    assert client.get("/arbitrary/untrusted/path-12345").status_code == 404
+    metrics = client.get("/metrics").text
+    assert 'path="unmatched"' in metrics
+    assert "path-12345" not in metrics
+
+
 def test_run_scenario_and_invalid_requests(client: TestClient) -> None:
     response = client.post("/scenarios/run", json={"scenario": "outage"})
     assert response.status_code == 200
@@ -26,25 +35,91 @@ def test_run_scenario_and_invalid_requests(client: TestClient) -> None:
     assert (
         client.post("/scenarios/run", json={"scenario": "outage", "steps": 10}).status_code == 422
     )
+    assert (
+        client.post("/scenarios/run", json={"scenario": "outage", "unexpected": True}).status_code
+        == 422
+    )
+    assert client.post("/scenarios/run", json={"scenario": "Outage!"}).status_code == 422
 
 
 def test_action_validation_endpoint(client: TestClient) -> None:
     client.post("/scenarios/run", json={"scenario": "congestion"})
-    decision = client.get("/decisions").json()[0]
+    decision = next(
+        item
+        for item in client.get("/decisions").json()
+        if item["action"]["action_type"] == "activate_additional_capacity"
+    )
     timestamp = decision["action"]["proposed_at"]
     response = client.post(
         "/actions/validate",
         json={
             "action": decision["action"],
-            "prediction": decision["prediction"],
             "telemetry_timestamp": timestamp,
-            "evaluated_at": timestamp,
         },
     )
     assert response.status_code == 200
-    assert response.json() == {
-        "result": response.json()["result"],
-        "shadow_mode": True,
+    body = response.json()
+    assert body["shadow_mode"] is True
+    assert body["prediction"] == decision["prediction"]
+    assert body["result"]["approved"] is False
+    assert "telemetry is stale" in body["result"]["violations"]
+
+
+def test_action_validation_rejects_client_prediction_time_and_unstored_data(
+    client: TestClient,
+) -> None:
+    client.post("/scenarios/run", json={"scenario": "congestion"})
+    decision = next(
+        item
+        for item in client.get("/decisions").json()
+        if item["action"]["action_type"] == "activate_additional_capacity"
+    )
+    action = decision["action"]
+    timestamp = action["proposed_at"]
+    injected = client.post(
+        "/actions/validate",
+        json={
+            "action": action,
+            "telemetry_timestamp": timestamp,
+            "prediction": decision["prediction"],
+            "evaluated_at": timestamp,
+        },
+    )
+    assert injected.status_code == 422
+    assert {item["loc"][-1] for item in injected.json()["detail"]} == {
+        "prediction",
+        "evaluated_at",
     }
-    stale = response.json()["result"]["evaluated_at"]
-    assert stale
+
+    forged = client.post(
+        "/actions/validate",
+        json={
+            "action": action,
+            "telemetry_timestamp": datetime.now(UTC).isoformat(),
+        },
+    )
+    assert forged.status_code == 422
+    assert "stored synthetic telemetry" in forged.json()["detail"]
+
+    naive = client.post(
+        "/actions/validate",
+        json={"action": action, "telemetry_timestamp": "2026-01-01T00:00:00"},
+    )
+    assert naive.status_code == 422
+
+
+def test_action_validation_rejects_invalid_action_parameters(client: TestClient) -> None:
+    client.post("/scenarios/run", json={"scenario": "congestion"})
+    decision = next(
+        item
+        for item in client.get("/decisions").json()
+        if item["action"]["action_type"] == "activate_additional_capacity"
+    )
+    action = decision["action"]
+    action["parameters"] = {"capacity_delta_pct": 15, "shell_command": "unsafe"}
+    response = client.post(
+        "/actions/validate",
+        json={"action": action, "telemetry_timestamp": action["proposed_at"]},
+    )
+    assert response.status_code == 422
+    assert "parameters must be exactly" in str(response.json())
