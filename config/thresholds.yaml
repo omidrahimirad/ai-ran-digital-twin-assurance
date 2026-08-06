@@ -1,0 +1,17 @@
+rsrp_min_dbm: -110.0
+sinr_min_db: 3.0
+bler_max_pct: 12.0
+prb_utilization_max_pct: 90.0
+throughput_min_mbps: 12.0
+rrc_success_min_pct: 95.0
+handover_success_min_pct: 94.0
+call_drop_max_pct: 2.0
+latency_max_ms: 80.0
+availability_min_pct: 99.0
+zscore_limit: 5.0
+rolling_window: 12
+max_parameter_delta: 3.0
+cooldown_minutes: 15
+telemetry_max_age_minutes: 15
+prediction_confidence_min: 0.65
+availability_max_drop_pct: 0.5

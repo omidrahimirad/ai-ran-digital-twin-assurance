@@ -1,0 +1,7 @@
+seed: 42
+cell_count: 20
+interval_minutes: 5
+baseline_steps: 72
+capacity_mbps: 240.0
+transmit_power_dbm: 43.0
+traffic_profile: urban_mixed
