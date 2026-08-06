@@ -7,8 +7,8 @@ import streamlit as st
 from ai_ran_assurance.config import load_config
 from ai_ran_assurance.workflow import ClosedLoopEngine
 
-st.set_page_config(page_title="AI-Assisted RAN Assurance", layout="wide")
-st.title("AI-Assisted RAN Digital-Twin Assurance")
+st.set_page_config(page_title="Synthetic RAN Assurance", layout="wide")
+st.title("Synthetic AI-Assisted RAN Assurance")
 st.warning(
     "Simulation-based prototype using deterministic synthetic RAN data. "
     "All decisions remain in shadow mode."
@@ -70,7 +70,7 @@ with right:
         st.write(f"Status: `{decision.status.value}`")
         st.write("Guardrails:", decision.guardrail.violations or ["passed"])
 
-st.subheader("Before and predicted-after twin state")
+st.subheader("Before and surrogate-after copied state")
 for decision in run.decisions:
     comparison = pd.DataFrame(
         {

@@ -20,6 +20,8 @@ class IsolationForestDetector:
     name = "isolation_forest"
 
     def __init__(self, seed: int = 42, contamination: float = 0.02) -> None:
+        if not 0 < contamination <= 0.5:
+            raise ValueError("contamination must be in (0, 0.5]")
         self.scaler = StandardScaler()
         self.model = IsolationForest(
             n_estimators=150,
@@ -30,10 +32,11 @@ class IsolationForestDetector:
         self.fitted = False
 
     def fit(self, samples: list[KPISample]) -> "IsolationForestDetector":
-        normal = [sample for sample in samples if sample.ground_truth is RootCauseCategory.NORMAL]
-        if len(normal) < 20:
+        if any(sample.ground_truth is not RootCauseCategory.NORMAL for sample in samples):
+            raise ValueError("training data must be a prequalified all-normal baseline")
+        if len(samples) < 20:
             raise ValueError("at least 20 normal baseline samples are required")
-        self.model.fit(self.scaler.fit_transform(_matrix(normal)))
+        self.model.fit(self.scaler.fit_transform(_matrix(samples)))
         self.fitted = True
         return self
 

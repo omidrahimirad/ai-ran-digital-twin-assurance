@@ -1,7 +1,7 @@
-.PHONY: install lint format type test coverage benchmark demo api dashboard quality
+.PHONY: install lint format type test coverage benchmark demo api dashboard security quality
 
 install:
-	uv sync --extra dev
+	uv sync --frozen --extra dev
 
 lint:
 	uv run ruff check .
@@ -30,4 +30,9 @@ api:
 dashboard:
 	uv run streamlit run dashboard/app.py
 
-quality: lint format type coverage benchmark
+security:
+	uv export --quiet --frozen --no-dev --no-emit-project --format requirements-txt --output-file /tmp/ai-ran-runtime-requirements.txt
+	uvx --from pip-audit==2.9.0 pip-audit --requirement /tmp/ai-ran-runtime-requirements.txt --disable-pip
+	uvx --from bandit==1.8.6 bandit -q -r src dashboard scripts
+
+quality: lint format type coverage security benchmark

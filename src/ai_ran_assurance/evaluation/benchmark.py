@@ -1,6 +1,5 @@
 import json
 import statistics
-import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -8,54 +7,87 @@ from typing import Any
 from fastapi.testclient import TestClient
 
 from ai_ran_assurance.api.main import app
-from ai_ran_assurance.domain.enums import RootCauseCategory
-from ai_ran_assurance.domain.models import CorrectiveAction, TwinPrediction
+from ai_ran_assurance.domain.enums import ActionType, RootCauseCategory
+from ai_ran_assurance.domain.models import (
+    CorrectiveAction,
+    FaultScenario,
+    TwinPrediction,
+)
 from ai_ran_assurance.evaluation.metrics import binary_metrics
+from ai_ran_assurance.twin import NetworkTwin
 from ai_ran_assurance.workflow import ClosedLoopEngine
 
 DISCLAIMER = (
-    "Reported results are based on deterministic synthetic RAN scenarios and do not "
+    "Reported results are based on closed-set synthetic RAN scenarios and do not "
     "represent performance on a commercial mobile network."
 )
+TRAINING_SEED = 17
+EVALUATION_SEEDS = (101, 211, 307)
+EVALUATION_SEVERITIES = (0.55, 0.8)
 
 
-def _coverage_percent(path: Path) -> float | None:
-    if not path.exists():
-        return None
-    data = json.loads(path.read_text(encoding="utf-8"))
-    value = data.get("totals", {}).get("percent_covered")
-    return round(float(value), 2) if value is not None else None
+def _validated_copy(model: Any, **updates: Any) -> Any:
+    values = model.model_dump()
+    values.update(updates)
+    return type(model).model_validate(values)
 
 
-def _unsafe_rejection_rate(engine: ClosedLoopEngine) -> tuple[float, int]:
-    run = engine.run("congestion")
-    decision = run.decisions[0]
-    action = decision.action
-    prediction = decision.prediction
+def _guardrail_regression(engine: ClosedLoopEngine) -> dict[str, int | float]:
+    run = engine.run("congestion", seed=EVALUATION_SEEDS[0])
+    target = run.scenario.target_cells[0]
+    decision = next(item for item in run.decisions if item.action.cell_id == target)
+    diagnosis = next(item for item in run.diagnoses if item.cell_id == target)
+    action = _validated_copy(decision.action, diagnosis_confidence=0.9)
+    prediction = _validated_copy(decision.prediction, confidence=0.9)
     sample = next(
         item
         for item in run.telemetry
-        if item.cell_id == action.cell_id and item.timestamp == run.diagnoses[0].timestamp
+        if item.cell_id == target and item.timestamp == diagnosis.timestamp
     )
-    unsafe_predictions = []
+    validator = engine.guardrails
+    control = validator.validate(
+        action,
+        prediction,
+        telemetry_timestamp=sample.timestamp,
+        evaluated_at=sample.timestamp,
+    )
+    cases: list[
+        tuple[
+            CorrectiveAction,
+            TwinPrediction,
+            datetime,
+            datetime,
+            list[CorrectiveAction],
+        ]
+    ] = []
     for field, value in (
         ("handover_success_pct", 80.0),
         ("rrc_success_pct", 90.0),
-        ("availability_pct", prediction.before_kpis["availability_pct"] - 2),
+        ("availability_pct", 98.0),
         ("latency_ms", 120.0),
+        ("call_drop_pct", 5.0),
+        ("bler_pct", 25.0),
     ):
-        changed = prediction.predicted_kpis.copy()
-        changed[field] = value
-        unsafe_predictions.append(prediction.model_copy(update={"predicted_kpis": changed}))
-    unsafe_predictions.append(prediction.model_copy(update={"confidence": 0.2}))
-    unsafe_actions: list[
-        tuple[CorrectiveAction, TwinPrediction, datetime, datetime, list[CorrectiveAction]]
-    ] = [(action, item, sample.timestamp, sample.timestamp, []) for item in unsafe_predictions]
-    excessive_delta = action.model_copy(
-        update={"parameters": {"parameter_delta": engine.config.thresholds.max_parameter_delta + 1}}
+        changed = prediction.predicted_kpis | {field: value}
+        cases.append(
+            (
+                action,
+                _validated_copy(prediction, predicted_kpis=changed),
+                sample.timestamp,
+                sample.timestamp,
+                [],
+            )
+        )
+    low_prediction = _validated_copy(prediction, confidence=0.2)
+    cases.append((action, low_prediction, sample.timestamp, sample.timestamp, []))
+    low_diagnosis = _validated_copy(action, diagnosis_confidence=0.2)
+    cases.append((low_diagnosis, prediction, sample.timestamp, sample.timestamp, []))
+    excessive_capacity = _validated_copy(
+        action,
+        parameters={"capacity_delta_pct": engine.config.thresholds.max_capacity_increase_pct + 1},
     )
-    unsafe_actions.append((excessive_delta, prediction, sample.timestamp, sample.timestamp, []))
-    unsafe_actions.append(
+    cases.append((excessive_capacity, prediction, sample.timestamp, sample.timestamp, []))
+    cases.append(
         (
             action,
             prediction,
@@ -64,144 +96,249 @@ def _unsafe_rejection_rate(engine: ClosedLoopEngine) -> tuple[float, int]:
             [],
         )
     )
-    previous = action.model_copy(update={"proposed_at": sample.timestamp - timedelta(minutes=1)})
-    unsafe_actions.append((action, prediction, sample.timestamp, sample.timestamp, [previous]))
-    rejected = 0
-    for (
-        candidate,
-        candidate_prediction,
-        telemetry_timestamp,
-        evaluated_at,
-        history,
-    ) in unsafe_actions:
-        result = engine.guardrails.validate(
+    cases.append(
+        (
+            action,
+            prediction,
+            sample.timestamp + timedelta(minutes=1),
+            sample.timestamp,
+            [],
+        )
+    )
+    previous = _validated_copy(action, proposed_at=sample.timestamp - timedelta(minutes=1))
+    cases.append((action, prediction, sample.timestamp, sample.timestamp, [previous]))
+    mismatched_id = _validated_copy(prediction, action_id="different-action")
+    cases.append((action, mismatched_id, sample.timestamp, sample.timestamp, []))
+    mismatched_cell = _validated_copy(prediction, cell_id="CELL-020")
+    cases.append((action, mismatched_cell, sample.timestamp, sample.timestamp, []))
+    proposal_before_data = _validated_copy(
+        action, proposed_at=sample.timestamp - timedelta(minutes=1)
+    )
+    cases.append((proposal_before_data, prediction, sample.timestamp, sample.timestamp, []))
+    review = CorrectiveAction(
+        action_id="human-review-regression",
+        cell_id=target,
+        action_type=ActionType.HUMAN_REVIEW,
+        parameters={},
+        diagnosis_confidence=0.9,
+        rationale="Explicit guardrail regression case.",
+        proposed_at=sample.timestamp,
+    )
+    review_prediction = engine.twin_simulator.simulate(
+        NetworkTwin(
+            run.topology,
+            [item for item in run.telemetry if item.timestamp == sample.timestamp],
+        ),
+        review,
+    )
+    cases.append((review, review_prediction, sample.timestamp, sample.timestamp, []))
+    rejected = sum(
+        not validator.validate(
             candidate,
             candidate_prediction,
             telemetry_timestamp=telemetry_timestamp,
             evaluated_at=evaluated_at,
             action_history=history,
-        )
-        rejected += int(not result.approved)
-    return round(100 * rejected / len(unsafe_actions), 2), len(unsafe_actions)
+        ).approved
+        for candidate, candidate_prediction, telemetry_timestamp, evaluated_at, history in cases
+    )
+    return {
+        "safe_control_approved": int(control.approved),
+        "unsafe_or_escalation_cases": len(cases),
+        "cases_rejected_or_escalated": rejected,
+        "regression_pass_rate": round(rejected / len(cases), 6),
+    }
 
 
-def _api_latency_ms() -> tuple[float, float]:
-    samples: list[float] = []
+def _api_health_smoke() -> dict[str, bool | int | str]:
+    successful = 0
     with TestClient(app) as client:
         for _ in range(25):
-            started = time.perf_counter()
             response = client.get("/health")
             response.raise_for_status()
-            samples.append((time.perf_counter() - started) * 1000)
-    ordered = sorted(samples)
-    p95_index = min(len(ordered) - 1, int(len(ordered) * 0.95))
-    return round(statistics.mean(samples), 3), round(ordered[p95_index], 3)
+            successful += 1
+    return {
+        "requests": successful,
+        "all_successful": successful == 25,
+        "timing_reported": False,
+        "scope": "in-process API health smoke; no latency or load claim",
+    }
+
+
+def _scenario_at_severity(scenario: FaultScenario, severity: float) -> FaultScenario:
+    values = scenario.model_dump()
+    values["severity"] = severity
+    return FaultScenario.model_validate(values)
 
 
 def run_benchmark() -> dict[str, Any]:
-    """Evaluate fixed scenarios without tuning against this benchmark output."""
-    engine = ClosedLoopEngine()
+    """Evaluate holdout seeds and severities without using truth in the workflow."""
+    engine = ClosedLoopEngine(training_seed=TRAINING_SEED)
     all_truth: list[bool] = []
     all_predicted: list[bool] = []
-    delays: list[float] = []
+    detection_delays: list[float] = []
+    episodes = 0
+    detected_episodes = 0
+    diagnosed_episodes = 0
     correct_causes = 0
-    scenario_results: dict[str, dict[str, Any]] = {}
-    for scenario in engine.config.scenarios:
-        run = engine.run(scenario.name)
-        detected = {(item.cell_id, item.timestamp) for item in run.anomalies}
-        truth = [item.ground_truth is not RootCauseCategory.NORMAL for item in run.telemetry]
-        predicted = [(item.cell_id, item.timestamp) in detected for item in run.telemetry]
-        all_truth.extend(truth)
-        all_predicted.extend(predicted)
-        target_detections = [
-            item
-            for item in run.anomalies
-            if item.cell_id in scenario.target_cells
-            and item.timestamp
-            >= run.telemetry[scenario.start_step * len(run.topology.cells)].timestamp
-        ]
-        start_timestamp = run.telemetry[scenario.start_step * len(run.topology.cells)].timestamp
-        delay = (
-            min(item.timestamp for item in target_detections) - start_timestamp
-        ).total_seconds() / 60
-        delays.append(delay)
-        diagnosed = run.diagnoses[0].probable_root_cause
-        correct = diagnosed is scenario.ground_truth
-        correct_causes += int(correct)
-        scenario_results[scenario.name] = {
-            "ground_truth": scenario.ground_truth.value,
-            "diagnosed": diagnosed.value,
-            "root_cause_correct": correct,
-            "detection_delay_minutes": delay,
-            "shadow_status": run.decisions[0].status.value,
+    ambiguous_causes = 0
+    scenario_results: dict[str, dict[str, int]] = {
+        scenario.name: {
+            "episodes": 0,
+            "detected_episodes": 0,
+            "diagnosed_episodes": 0,
+            "correct_root_causes": 0,
+            "ambiguous_root_causes": 0,
         }
+        for scenario in engine.config.scenarios
+    }
+    for configured in engine.config.scenarios:
+        for severity in EVALUATION_SEVERITIES:
+            scenario = _scenario_at_severity(configured, severity)
+            for seed in EVALUATION_SEEDS:
+                run = engine.run_scenario(scenario, seed=seed)
+                episodes += 1
+                scenario_result = scenario_results[scenario.name]
+                scenario_result["episodes"] += 1
+                detected = {(item.cell_id, item.timestamp) for item in run.anomalies}
+                truth = [
+                    item.ground_truth is not RootCauseCategory.NORMAL for item in run.telemetry
+                ]
+                predicted = [(item.cell_id, item.timestamp) in detected for item in run.telemetry]
+                all_truth.extend(truth)
+                all_predicted.extend(predicted)
+                target_cells = set(scenario.target_cells)
+                target_detections = [
+                    item
+                    for item in run.anomalies
+                    if item.cell_id in target_cells
+                    and scenario.start_step
+                    <= next(
+                        sample.step
+                        for sample in run.telemetry
+                        if sample.cell_id == item.cell_id and sample.timestamp == item.timestamp
+                    )
+                    < scenario.start_step + scenario.duration
+                ]
+                if not target_detections:
+                    continue
+                detected_episodes += 1
+                scenario_result["detected_episodes"] += 1
+                start_timestamp = next(
+                    item.timestamp
+                    for item in run.telemetry
+                    if item.step == scenario.start_step and item.cell_id == scenario.target_cells[0]
+                )
+                delay = (
+                    min(item.timestamp for item in target_detections) - start_timestamp
+                ).total_seconds() / 60
+                detection_delays.append(delay)
+                first_detection = min(target_detections, key=lambda item: item.timestamp)
+                evidence_sample = next(
+                    sample
+                    for sample in run.telemetry
+                    if sample.cell_id == first_detection.cell_id
+                    and sample.timestamp == first_detection.timestamp
+                )
+                # Truth selects episode evidence for scoring only. RCA receives the
+                # same anomaly and KPI sample as it does in the workflow.
+                diagnosis = engine.rca.diagnose(first_detection, evidence_sample)
+                diagnosed_episodes += 1
+                scenario_result["diagnosed_episodes"] += 1
+                if diagnosis.probable_root_cause is RootCauseCategory.UNKNOWN:
+                    ambiguous_causes += 1
+                    scenario_result["ambiguous_root_causes"] += 1
+                if diagnosis.probable_root_cause is scenario.ground_truth:
+                    correct_causes += 1
+                    scenario_result["correct_root_causes"] += 1
     detection = binary_metrics(all_truth, all_predicted)
-    unsafe_rate, unsafe_cases = _unsafe_rejection_rate(engine)
-    mean_latency, p95_latency = _api_latency_ms()
     return {
         "disclaimer": DISCLAIMER,
-        "benchmark_seed": engine.config.network.seed,
-        "scenario_count": len(engine.config.scenarios),
+        "protocol": {
+            "type": "closed-set synthetic stress test",
+            "training_seed": TRAINING_SEED,
+            "evaluation_seeds": list(EVALUATION_SEEDS),
+            "evaluation_severities": list(EVALUATION_SEVERITIES),
+            "fault_scenarios": len(engine.config.scenarios),
+            "truth_used_only_for_scoring": True,
+        },
+        "scenario_run_count": episodes,
         "telemetry_sample_count": len(all_truth),
         "detection": detection.as_dict(),
-        "average_detection_delay_minutes": round(statistics.mean(delays), 3),
-        "root_cause_accuracy": round(correct_causes / len(engine.config.scenarios), 6),
-        "unsafe_actions_rejected_pct": unsafe_rate,
-        "unsafe_action_cases": unsafe_cases,
-        "api_latency_ms": {"mean": mean_latency, "p95": p95_latency, "samples": 25},
-        "test_coverage_pct": _coverage_percent(Path("artifacts/coverage.json")),
+        "fault_episode_detection_rate": round(detected_episodes / episodes, 6),
+        "average_detection_delay_minutes_on_detected_episodes": (
+            round(statistics.mean(detection_delays), 3) if detection_delays else None
+        ),
+        "root_cause": {
+            "accuracy_on_diagnosed_episodes": (
+                round(correct_causes / diagnosed_episodes, 6) if diagnosed_episodes else None
+            ),
+            "diagnosed_episodes": diagnosed_episodes,
+            "correct_episodes": correct_causes,
+            "ambiguous_episodes": ambiguous_causes,
+        },
+        "guardrail_regression": _guardrail_regression(engine),
+        "runtime_observation": {"api_health_smoke": _api_health_smoke()},
         "scenarios": scenario_results,
     }
 
 
 def _markdown(results: dict[str, Any]) -> str:
     detection = results["detection"]
-    latency = results["api_latency_ms"]
+    root_cause = results["root_cause"]
+    guardrails = results["guardrail_regression"]
+    api_smoke = results["runtime_observation"]["api_health_smoke"]
+    protocol = results["protocol"]
     rows = "\n".join(
-        f"| {name} | {item['ground_truth']} | {item['diagnosed']} | "
-        f"{item['detection_delay_minutes']:.1f} | {item['shadow_status']} |"
+        f"| {name} | {item['episodes']} | {item['detected_episodes']} | "
+        f"{item['correct_root_causes']} | {item['ambiguous_root_causes']} |"
         for name, item in results["scenarios"].items()
     )
-    coverage = (
-        f"{results['test_coverage_pct']:.2f}%"
-        if results["test_coverage_pct"] is not None
-        else "not available (run coverage before benchmark)"
+    delay_text = results["average_detection_delay_minutes_on_detected_episodes"]
+    rca_text = root_cause["accuracy_on_diagnosed_episodes"]
+    guardrail_text = (
+        f"{guardrails['cases_rejected_or_escalated']}/{guardrails['unsafe_or_escalation_cases']}"
     )
-    unsafe_summary = (
-        f"{results['unsafe_actions_rejected_pct']:.2f}% ({results['unsafe_action_cases']} cases)"
-    )
-    api_summary = (
-        f"{latency['mean']:.3f} ms mean / {latency['p95']:.3f} ms p95 ({latency['samples']} calls)"
-    )
-    return f"""# Reproducible benchmark results
+    return f"""# Hardened synthetic evaluation results
 
 > **{results["disclaimer"]}**
 
-Generated by `python scripts/run_benchmark.py` with seed `{results["benchmark_seed"]}`.
-No metric in this document is an invented or commercial-network benchmark.
+This is a **{protocol["type"]}**, not an external validation benchmark. The model is
+trained with seed `{protocol["training_seed"]}` and evaluated on seeds
+`{protocol["evaluation_seeds"]}` at severities `{protocol["evaluation_severities"]}`.
+Ground truth is used only by this evaluator for scoring, not by workflow selection.
 
-## Summary
+## Results
 
 | Metric | Result |
 |---|---:|
+| Scenario runs | {results["scenario_run_count"]} |
+| Telemetry samples | {results["telemetry_sample_count"]} |
 | Precision | {detection["precision"]:.4f} |
 | Recall | {detection["recall"]:.4f} |
 | F1-score | {detection["f1_score"]:.4f} |
 | False-alarm rate | {detection["false_alarm_rate"]:.4f} |
-| Average detection delay | {results["average_detection_delay_minutes"]:.3f} minutes |
-| Root-cause accuracy | {results["root_cause_accuracy"]:.2%} |
-| Unsafe candidate actions rejected | {unsafe_summary} |
-| API `/health` latency | {api_summary} |
-| Core-package test coverage | {coverage} |
+| Fault-episode detection rate | {results["fault_episode_detection_rate"]:.2%} |
+| Mean delay on detected episodes | {delay_text} minutes |
+| RCA accuracy on diagnosed episodes | {rca_text} |
+| Ambiguous RCA episodes | {root_cause["ambiguous_episodes"]} |
+| Guardrail regression cases rejected/escalated | {guardrail_text} |
+| Safe guardrail control approved | {guardrails["safe_control_approved"]} |
+| API health smoke | {api_smoke["requests"]}/25 successful |
 
-## Scenario detail
+No API latency number is reported: an in-process test client cannot establish service,
+network, concurrency, or scalability performance.
 
-| Scenario | Ground truth | Diagnosed | Delay (min) | Shadow decision |
-|---|---|---|---:|---|
+## Scenario episodes
+
+| Scenario | Runs | Detected | Correct RCA | Ambiguous RCA |
+|---|---:|---:|---:|---:|
 {rows}
 
-The benchmark uses a deterministic synthetic engineering abstraction. It is not an
-RF-accurate simulator, standards-conformance test, or evidence of production behavior.
+Missed episodes remain false negatives. RCA accuracy is reported only where a target
+episode was both detected and diagnosed; ambiguity is retained rather than forced into a
+specific mobility cause. No result establishes RF accuracy, causal validity, standards
+conformance, or performance on external telemetry.
 """
 
 
