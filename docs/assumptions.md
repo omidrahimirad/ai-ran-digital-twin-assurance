@@ -1,37 +1,50 @@
 # Assumptions
 
-## Network abstraction
+## Synthetic network
 
-- Twenty cells are sufficient to demonstrate topology-aware multi-cell software behavior.
-- Bidirectional degree-four relations approximate local mobility options without modeling
-  geography, sectorization, bands, carriers, or UE measurements.
-- Cell capacity, power, configuration, operational state, and traffic profile are known.
-- One fault scenario is active per benchmark run; overlapping faults are not evaluated.
+- Twenty cells and degree-four directed neighbor choices are sufficient for software
+  behavior tests, not network dimensioning.
+- Geography, sectors, bands, carriers, UEs, beams, propagation, scheduler state, and
+  protocol events are absent.
+- Capacity, transmit power, local configuration, neighbor state, and five-minute KPI
+  aggregates are assumed known and internally consistent.
+- Exactly one configured fault occurs per evaluation episode.
 
-## Telemetry
+## Telemetry generation
 
-- Five-minute KPI aggregates are complete, correctly timestamped, and aligned by cell.
-- KPI values use the units encoded in field names.
-- Ground-truth labels exist only for synthetic evaluation and are not consumed by diagnosis.
-- Seeded noise is stationary within a run; distribution shift is outside the current scope.
+- KPI names encode the units used by the equations; they are not mapped to vendor PM
+  counters or 3GPP measurement definitions.
+- Seeded cell bias and autoregressive state are stable within a run. Morning/evening
+  demand peaks are illustrative, not fitted to traffic traces.
+- Samples are complete, timezone-aware, and aligned by timestamp and cell. Missing,
+  duplicated, delayed, and out-of-order ingestion are not generated.
+- Synthetic ground truth exists for injection and evaluation. Workflow selection and RCA
+  do not consume it.
 
 ## Detection and diagnosis
 
-- A clean synthetic normal baseline is available for Isolation Forest training.
-- Absolute thresholds are illustrative engineering policy, not operator recommendations.
-- Root-cause rule confidence is ordinal and uncalibrated.
-- A detected compound KPI signature has one primary root cause for scoring purposes.
+- A prequalified all-normal 24-hour synthetic baseline is available for model fitting.
+  Mixed labeled data is rejected instead of cleaned silently.
+- Training and evaluation seeds differ, but both come from the same generator family.
+- Thresholds are illustrative policy values, not operator recommendations.
+- RCA confidence is an ordinal rule weight, not a calibrated probability.
+- Similar mobility signatures are intentionally reported as unknown until topology or
+  configuration evidence is available.
 
-## Twin and safety
+## Response surrogate and safety
 
-- Fixed action response factors are directionally useful for software validation only.
-- Prediction confidence is supplied by the response model, not learned or calibrated.
-- Guardrail thresholds are demonstration constraints and must not be reused on a live RAN.
-- “Approved” always means approved for shadow reporting, never approved for execution.
+- What-if equations are used only to verify software contracts and guardrails.
+- Prediction confidence is manually assigned by action class and uncalibrated.
+- Guardrail thresholds do not constitute an operator safety case.
+- An approved result is only eligible for shadow display and cannot authorize execution.
 
-## Reproducibility
+## Evaluation and reproduction
 
-- Python dependencies resolve from the constrained lock file and seed 42 is used in
-  benchmark mode.
-- API latency varies with host load and is included only as a local smoke measurement.
-- Coverage is recorded after running the complete test suite in the same checkout.
+- The committed protocol uses training seed `17`, evaluation seeds `101`, `211`, and
+  `307`, and severities `0.55` and `0.8`.
+- Ground truth is used by the evaluator to identify positive samples and episode evidence.
+- Detection delay is reported only on detected episodes; missed episodes remain false
+  negatives and are separately visible in episode detection rate.
+- Coverage is captured by the full test suite before artifact generation.
+- API checks establish functional health only. No latency, load, concurrency, or
+  scalability claim is made.

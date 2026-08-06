@@ -1,71 +1,109 @@
 # Methodology
 
-## Synthetic network and KPI model
+## Synthetic topology and time series
 
-The topology is a deterministic 20-node ring with local chord neighbors. Five-minute
-traffic follows a daily sinusoid with cell-specific phase variation and seeded noise.
-KPIs are related rather than sampled independently:
+The topology is a deterministic 20-node ring-plus-chords graph with four directed,
+enabled neighbor choices per cell. Each five-minute step uses:
 
-- SINR is a function of RSRP, load-related interference, and small noise.
-- BLER grows when SINR falls.
-- Throughput combines configured capacity, a SINR-derived spectral factor, congestion
-  pressure, and BLER loss.
-- RRC success reacts to availability and overload.
-- Handover success reacts to interference before fault-specific effects.
-- Call drops react to BLER and handover failure.
-- Latency reacts to load and BLER before transport or congestion fault effects.
+- fixed seeded cell shadowing and traffic bias;
+- autoregressive load, signal, and interference state;
+- illustrative morning and evening demand peaks;
+- offered demand bounded below configured capacity;
+- transmit-power and cell-shadowing effects on RSRP;
+- load-related interference in SINR;
+- a logistic SINR-to-BLER relationship;
+- achievable radio throughput constrained by capacity and radio efficiency;
+- PRB demand derived from offered versus achievable throughput;
+- nonlinear queue pressure in latency; and
+- BLER/mobility relationships in access, handover, and drop KPIs.
 
-These equations are engineering abstractions designed for software assurance tests. They
-do not implement link budgets, propagation, scheduler behavior, protocol timing, or an RF
-channel model.
+The generator always uses a local NumPy random generator. Equal configuration, start
+time, step count, scenario, and seed produce equal telemetry. A timezone-naive start is
+rejected. These equations are transparent test fixtures, not RF, scheduler, or protocol
+models.
 
 ## Fault injection
 
-Each YAML scenario declares its target, start step, duration, severity, affected KPIs,
-and ground-truth cause. Fault effects are deterministic multipliers or offsets applied
-after baseline relationships and before KPI bounds. The same seed therefore reproduces
-the same normal and faulty time series.
+Each validated scenario declares a unique name, mapped fault type and truth category,
+known target cells, active interval, severity, and the complete set of directly modified
+KPIs. Injection applies deterministic bounded offsets/multipliers after baseline KPI
+relationships. Throughput remains bounded by configured cell capacity.
 
-## Detection
+The injector truth is not automatically a defensible RCA. In particular, missing-neighbor
+and mobility-parameter injection produce similar aggregate KPIs. The workflow reports
+that ambiguity rather than recovering the label.
 
-The interpretable detector combines configured absolute thresholds with a past-only
-rolling window. Rolling findings require at least two KPI Z-scores beyond the configured
-limit. The Isolation Forest uses standardized KPI vectors, a fixed seed, one execution
-thread, and only samples labeled `normal` during fitting. No deep learning is used.
+## Training and anomaly detection
 
-The workflow admits all hard-threshold findings. Statistical-only findings require an
-Isolation Forest finding for the identical cell/timestamp. Configuration and detector
-logic were fixed before generating the committed results; the benchmark does not search
-hyperparameters against its own output.
+Isolation Forest training uses a separately generated 24-hour baseline and a fixed
+single-thread seed. Fitting rejects a mixed baseline if any sample is not marked normal;
+it does not use labels to filter convenient rows. Standardization is fitted only on the
+training baseline.
 
-## Explainable diagnosis
+The rule detector processes timestamp-sorted samples and calculates rolling statistics
+only from prior samples for that cell. Hard threshold breaches are admitted directly.
+Statistical-only findings require Isolation Forest agreement on the identical cell and
+timestamp. The configuration was not optimized against the reported evaluation seeds.
 
-Ordered vendor-neutral rules recognize compound signatures such as outage, congestion,
-interference, coverage loss, transport delay, BLER degradation, neighbor failure, and
-mobility misconfiguration. Output includes a category, confidence, evidence, plain-language
-explanation, and next diagnostic check. Confidence values are rule weights, not calibrated
-probabilities.
+## Diagnosis and action policy
 
-## Twin and guardrails
+RCA applies ordered compound KPI rules for strong outage/degradation, congestion,
+interference, coverage, transport, and BLER signatures. A mobility failure/drop signature
+without topology or configuration evidence returns `unknown` at low confidence. Output
+contains evidence, an explanation, and a next diagnostic check.
 
-The twin deep-copies network and current state. It supports restoring a neighbor,
-steering traffic, rolling back a parameter, activating capacity, and requesting human
-review. Fixed response factors create before/after KPI predictions.
+Only diagnosed congestion maps to a 15% capacity candidate. Interference, coverage,
+transport, outage, radio-quality, mobility, unknown, and normal categories map to explicit
+human review. This avoids pretending that aggregate KPIs prove a safe configuration
+change.
 
-Guardrails check predicted handover/RRC success, availability loss, latency, parameter
-delta, cooldown, telemetry age, and prediction confidence. A human-review action always
-escalates. No result triggers real actuation.
+## Copied state and response equations
+
+The state surrogate requires non-empty telemetry with one known cell per record and one
+common timestamp. The main workflow supplies the full twenty-cell timestamp state.
+
+- Capacity activation reduces modeled PRB by a capacity ratio, adjusts queue-related
+  latency, and permits at most a small throughput increase under high load.
+- Traffic steering requires an enabled, available neighbor with PRB headroom and records
+  the source and impacted target effects.
+- Neighbor restoration can only enable a specifically named relation that exists and is
+  disabled.
+- Parameter rollback verifies the claimed current value against copied configuration and
+  uses a small local response.
+- Human review predicts no KPI change.
+
+Every response lists assumptions and a deliberately low, uncalibrated confidence. The
+model description states that this is not causal, RF-calibrated, or a live prediction.
+
+## Guardrails and API trust boundary
+
+Guardrails fail closed on mismatched action/prediction identity, primary or impacted-cell
+KPI limits, absolute/relative availability, excessive action size, cooldown, future
+history, stale/future telemetry, proposal chronology, diagnosis confidence, response
+confidence, and human-review requests.
+
+Synthetic replay evaluates an action against the latest timestamp in that replay. The
+API uses server time and only accepts a timestamp/cell present in stored telemetry. It
+recomputes the response; prediction bodies and evaluation timestamps supplied by a client
+are forbidden by the request schema.
 
 ## Evaluation protocol
 
-The benchmark executes all eight scenarios with seed 42 and evaluates every cell/time
-sample. A sample is positive only inside its configured target fault interval.
+The committed benchmark uses one engine trained with seed `17`, then evaluates all eight
+configured fault types at severities `0.55` and `0.8` with seeds `101`, `211`, and `307`.
+That produces 48 episodes and 220,800 cell/time samples.
 
-- Precision, recall, F1, false-alarm rate: binary sample-level detection.
-- Detection delay: first target-cell finding minus scenario start.
-- Root-cause accuracy: diagnosed category versus configured cause per scenario.
-- Unsafe rejection: eight independently constructed safety violations.
-- API latency: 25 sequential in-process `GET /health` calls; not a load test.
-- Coverage: the measured `pytest-cov` JSON total when generated before the benchmark.
+- Sample precision, recall, F1, and false-alarm rate compare findings with injected
+  target/active-window truth.
+- Episode detection requires at least one target-cell finding during the fault interval.
+- Detection delay is calculated only for detected episodes and is labeled accordingly.
+- RCA scoring applies the same RCA engine to the first detected target evidence; truth is
+  used only to select and score that evidence.
+- Ambiguous diagnoses remain incorrect for exact injected-cause accuracy and are counted
+  separately.
+- Guardrail regression contains one explicit safe control plus sixteen isolated unsafe
+  or escalation cases.
+- API health is 25 successful in-process requests; timing is intentionally omitted.
+- Coverage is read from a full `pytest-cov` run performed before artifact generation.
 
-Exact machine-readable counts and results are in `artifacts/sample_results.json`.
+The artifact is a closed-set stress test, not an external benchmark.

@@ -1,82 +1,81 @@
-# Architecture
+# Architecture and safety boundary
 
 ## Scope
 
-This repository implements a simulation-based, vendor-neutral assurance prototype using
-synthetic data. The architecture is intentionally modular so simulation, analytics,
-policy, and delivery surfaces can be verified separately. It is not an RF-accurate
-network simulator, an O-RAN RIC, or a real-network automation platform.
-
-## Components
+The repository implements an offline synthetic assurance pipeline. It is modular enough
+to test configuration, simulation, analytics, policy, and interfaces independently. It
+is not an RF simulator, standards-grade network digital twin, O-RAN RIC, or real-network
+automation platform.
 
 ```mermaid
 flowchart TB
-    subgraph Inputs
-        C["Pydantic-validated YAML"]
-        F["Deterministic fault scenario"]
-    end
-    subgraph Synthetic_RAN["Synthetic multi-cell RAN"]
-        T["NetworkX topology"]
-        K["Correlated KPI generator"]
-        I["Fault injector"]
-    end
-    subgraph Assurance
-        R["Rules + rolling Z-scores"]
-        M["Normal-only Isolation Forest"]
-        H["Explainable fusion"]
-        D["Root-cause rules"]
-    end
-    subgraph Shadow_Twin["Lightweight copied twin"]
-        A["Action recommender"]
-        P["Deterministic response model"]
-        G["Guardrail policy"]
-        S["Shadow decision"]
-    end
-    subgraph Surfaces
-        CLI["Typer CLI"]
-        API["FastAPI + Prometheus"]
-        UI["Streamlit + Plotly"]
-        E["Benchmark artifacts"]
-    end
-    C --> T --> K
-    F --> I --> K
-    K --> R --> H
-    K --> M --> H
-    H --> D --> A --> P --> G --> S
-    S --> CLI
-    S --> API
-    S --> UI
-    S --> E
+    C["Strict packaged/YAML configuration"] --> T["Deterministic 20-cell topology"]
+    T --> K["Correlated KPI generator"]
+    F["Single synthetic fault"] --> K
+    K --> R["Threshold and past-only rolling detector"]
+    K --> M["Isolation Forest from separate normal seed"]
+    R --> H["Anomaly fusion"]
+    M --> H
+    H --> D["Conservative KPI-pattern diagnosis"]
+    D --> A["Candidate action or human review"]
+    A --> P["Copied state and bounded response surrogate"]
+    P --> G["Fail-closed guardrails"]
+    G --> S["Shadow report"]
+    S --> CLI["CLI"]
+    S --> API["FastAPI and Prometheus"]
+    S --> UI["Streamlit"]
+    S --> E["Closed-set evaluation"]
 ```
 
-## Dependency and state rules
+## Dependency and data-flow rules
 
-- `domain` owns Pydantic data contracts and enums and imports no higher layer.
-- `simulation` owns deterministic topology, traffic/KPI relationships, and fault effects.
-- `detection` implementations share a protocol. Isolation Forest fitting filters for
-  `normal` ground truth and uses a fixed seed.
-- `diagnosis` uses vendor-neutral KPI combinations; it does not consume ground truth.
-- `twin` copies topology, neighbor state, configurations, traffic, and latest KPI state
-  before applying transparent response factors.
-- `workflow` orchestrates a run and retains no external-network integration.
-- `api`, `cli`, `dashboard`, and `evaluation` consume the workflow rather than duplicate it.
+- `domain` owns strict Pydantic contracts and imports no higher layer.
+- `simulation` owns the topology, KPI equations, time state, and fault injection.
+- `detection` uses past-only rolling windows. Isolation Forest fitting rejects any
+  sample not explicitly marked normal; it never silently filters a mixed training set.
+- `diagnosis` receives only an anomaly and the matching KPI sample. It does not receive
+  scenario metadata or ground truth.
+- `twin` copies one timestamp of known-cell telemetry plus topology/configuration.
+  `NetworkTwin` is a state container; `TwinSimulator` is a response surrogate.
+- `workflow` does not filter findings by configured target cell or active fault window.
+  It retains the most recent anomaly per cell and evaluates freshness against the latest
+  timestamp in the replay.
+- `evaluation` alone uses target cells, active windows, and labels for scoring.
+- API action validation accepts stored telemetry references and recomputes the surrogate
+  result server-side. It does not trust a client prediction or client clock.
 
-## Hybrid decision rule
+## Detection fusion
 
-A configured hard safety threshold can emit an interpretable anomaly directly. A
-lower-specificity rolling Z-score finding is emitted by the workflow only if the
-independently trained Isolation Forest agrees on the same cell and timestamp. This makes
-fusion inspectable and prevents the unsupervised score from overriding safety rules.
+Configured hard-threshold findings enter directly. A lower-specificity rolling finding
+enters only when the independently fitted Isolation Forest also flags the identical cell
+and timestamp. The Isolation Forest does not override a hard safety threshold. This is a
+fixed, inspectable heuristic—not a trained ensemble or calibrated probability model.
 
-## Shadow-mode safety boundary
+## State-surrogate boundary
 
-The last executable boundary is a `ShadowDecision` model. The code has no NETCONF,
-RESTCONF, gNMI, RIC, EMS, OSS, vendor CLI, or other southbound actuation client. Guardrail
-approval means only that a candidate may appear in a report.
+The copied state contains topology, enabled relations, cell configuration, and exactly
+one KPI aggregate per included cell at one timestamp. Actions are rejected if required
+state is absent or inconsistent. Neighbor restoration can only enable a specific disabled
+relation already present in copied topology. Traffic steering checks the enabled target,
+availability, headroom, and both source and target KPI effects.
 
-## Runtime surfaces
+Response factors are bounded, deterministic, and accompanied by assumptions and low
+confidence. They do not estimate causality, propagation, scheduler behavior, or RF
+performance.
 
-- CLI for deterministic data generation, scenario demos, benchmarking, and API startup.
-- FastAPI for topology, telemetry, findings, decisions, validation, and metrics.
-- Streamlit for interactive inspection of the same in-process workflow.
-- Docker Compose for independently starting the API and dashboard containers.
+## Shadow safety boundary
+
+The last boundary is `ShadowDecision`. Guardrails check action/prediction identity,
+primary and impacted-cell KPI limits, absolute and relative availability, action size,
+cooldown, timestamps, stale/future evidence, diagnosis confidence, and surrogate
+confidence. Any human-review candidate is an explicit escalation.
+
+There is no NETCONF, RESTCONF, gNMI, O1, A1, E2, RIC, EMS/OSS, vendor CLI, or command
+executor. “Approved” means approved to appear in a shadow report only.
+
+## Runtime state
+
+The API and dashboard retain the latest run in process. The API uses a lock around run
+replacement, but there is no database, queue, authentication, authorization, experiment
+lineage store, or multi-user isolation. Prometheus labels use route templates rather than
+raw untrusted paths to bound cardinality.
