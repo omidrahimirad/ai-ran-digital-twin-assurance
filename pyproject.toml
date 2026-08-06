@@ -67,6 +67,7 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers"
 testpaths = ["tests"]
+pythonpath = ["."]
 markers = ["slow: slower smoke or benchmark tests"]
 
 [tool.coverage.run]
