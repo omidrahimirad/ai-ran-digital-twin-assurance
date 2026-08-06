@@ -1,0 +1,84 @@
+{
+  "disclaimer": "Reported results are based on deterministic synthetic RAN scenarios and do not represent performance on a commercial mobile network.",
+  "benchmark_seed": 42,
+  "scenario_count": 8,
+  "telemetry_sample_count": 11520,
+  "detection": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1_score": 1.0,
+    "false_alarm_rate": 0.0,
+    "true_positives": 96,
+    "false_positives": 0,
+    "true_negatives": 11424,
+    "false_negatives": 0
+  },
+  "average_detection_delay_minutes": 0.0,
+  "root_cause_accuracy": 1.0,
+  "unsafe_actions_rejected_pct": 100.0,
+  "unsafe_action_cases": 8,
+  "api_latency_ms": {
+    "mean": 0.999,
+    "p95": 1.351,
+    "samples": 25
+  },
+  "test_coverage_pct": 98.32,
+  "scenarios": {
+    "congestion": {
+      "ground_truth": "congestion",
+      "diagnosed": "congestion",
+      "root_cause_correct": true,
+      "detection_delay_minutes": 0.0,
+      "shadow_status": "shadow_approved"
+    },
+    "interference": {
+      "ground_truth": "interference",
+      "diagnosed": "interference",
+      "root_cause_correct": true,
+      "detection_delay_minutes": 0.0,
+      "shadow_status": "shadow_approved"
+    },
+    "missing_neighbor": {
+      "ground_truth": "neighbor_relation",
+      "diagnosed": "neighbor_relation",
+      "root_cause_correct": true,
+      "detection_delay_minutes": 0.0,
+      "shadow_status": "shadow_approved"
+    },
+    "outage": {
+      "ground_truth": "cell_outage",
+      "diagnosed": "cell_outage",
+      "root_cause_correct": true,
+      "detection_delay_minutes": 0.0,
+      "shadow_status": "shadow_rejected"
+    },
+    "transport_latency": {
+      "ground_truth": "transport",
+      "diagnosed": "transport",
+      "root_cause_correct": true,
+      "detection_delay_minutes": 0.0,
+      "shadow_status": "human_review_required"
+    },
+    "coverage": {
+      "ground_truth": "coverage",
+      "diagnosed": "coverage",
+      "root_cause_correct": true,
+      "detection_delay_minutes": 0.0,
+      "shadow_status": "shadow_approved"
+    },
+    "bler": {
+      "ground_truth": "radio_quality",
+      "diagnosed": "radio_quality",
+      "root_cause_correct": true,
+      "detection_delay_minutes": 0.0,
+      "shadow_status": "human_review_required"
+    },
+    "mobility": {
+      "ground_truth": "mobility_configuration",
+      "diagnosed": "mobility_configuration",
+      "root_cause_correct": true,
+      "detection_delay_minutes": 0.0,
+      "shadow_status": "shadow_approved"
+    }
+  }
+}

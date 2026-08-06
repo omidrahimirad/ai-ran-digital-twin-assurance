@@ -8,7 +8,7 @@ handover_success_min_pct: 94.0
 call_drop_max_pct: 2.0
 latency_max_ms: 80.0
 availability_min_pct: 99.0
-zscore_limit: 2.5
+zscore_limit: 5.0
 rolling_window: 12
 max_parameter_delta: 3.0
 cooldown_minutes: 15

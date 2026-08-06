@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from ai_ran_assurance.config import ProjectConfig, load_config
 from ai_ran_assurance.detection import IsolationForestDetector, RuleDetector
 from ai_ran_assurance.diagnosis import RootCauseEngine
+from ai_ran_assurance.domain.enums import AnomalyType
 from ai_ran_assurance.domain.models import (
     Anomaly,
     CorrectiveAction,
@@ -70,9 +71,16 @@ class ClosedLoopEngine:
         )
         rule_anomalies = self.rules.detect(telemetry)
         ml_anomalies = self.ml.detect(telemetry)
-        anomaly_map = {
-            (item.cell_id, item.timestamp): item for item in [*ml_anomalies, *rule_anomalies]
-        }
+        ml_keys = {(item.cell_id, item.timestamp) for item in ml_anomalies}
+        # Hard safety thresholds stand alone; lower-specificity rolling anomalies require
+        # independent Isolation Forest agreement. This keeps the fusion explainable.
+        fused = [
+            item
+            for item in rule_anomalies
+            if item.anomaly_type is AnomalyType.THRESHOLD
+            or (item.cell_id, item.timestamp) in ml_keys
+        ]
+        anomaly_map = {(item.cell_id, item.timestamp): item for item in fused}
         anomalies = sorted(anomaly_map.values(), key=lambda item: (item.timestamp, item.cell_id))
         sample_map = {(item.cell_id, item.timestamp): item for item in telemetry}
         selected = [

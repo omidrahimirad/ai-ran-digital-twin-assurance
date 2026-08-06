@@ -39,7 +39,8 @@ class RuleDetector:
         history: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
         anomalies: list[Anomaly] = []
         for sample in sorted(samples, key=lambda item: (item.timestamp, item.cell_id)):
-            evidence = self._threshold_evidence(sample)
+            threshold_evidence = self._threshold_evidence(sample)
+            evidence = threshold_evidence.copy()
             zscores: list[float] = []
             for name in KPI_NAMES:
                 values = history[sample.cell_id][name][-self.settings.rolling_window :]
@@ -52,11 +53,9 @@ class RuleDetector:
                             evidence.setdefault(name, value)
                             zscores.append(zscore)
                 history[sample.cell_id][name].append(value)
-            if evidence:
+            if threshold_evidence or len(zscores) >= 2:
                 anomaly_type = (
-                    AnomalyType.THRESHOLD
-                    if self._threshold_evidence(sample)
-                    else AnomalyType.STATISTICAL
+                    AnomalyType.THRESHOLD if threshold_evidence else AnomalyType.STATISTICAL
                 )
                 anomalies.append(
                     Anomaly(
