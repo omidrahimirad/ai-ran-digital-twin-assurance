@@ -217,8 +217,8 @@ not field-network performance measurements.
 | Recall | 0.5399 |
 | F1 | 0.7012 |
 | RCA accuracy on diagnosed episodes | 52.63% |
-| Tests | 104 passing |
-| Branch coverage | 89.93% in the reproduced Python 3.11 gate |
+| Tests | 109 passing |
+| Branch coverage | 90.03% in the reproduced Python 3.11 gate |
 
 Run the same checks with:
 
