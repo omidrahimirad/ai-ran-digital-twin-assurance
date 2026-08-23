@@ -155,12 +155,21 @@ class InvestigationContextBuilder:
             raise ValueError("anomaly references a cell outside the supplied topology")
 
         eligible = [sample for sample in telemetry if sample.timestamp <= anomaly.timestamp]
-        history = sorted(
+        analyzed_cell_samples = sorted(
             (sample for sample in eligible if sample.cell_id == anomaly.cell_id),
             key=lambda sample: (sample.timestamp, sample.step),
-        )[-self.settings.context_lookback_samples :]
-        if not any(sample.timestamp == anomaly.timestamp for sample in history):
+        )
+        current_samples = [
+            sample for sample in analyzed_cell_samples if sample.timestamp == anomaly.timestamp
+        ]
+        if not current_samples:
             raise ValueError("anomaly timestamp has no matching observable telemetry")
+        current_sample = current_samples[-1]
+        recent_history = [
+            sample
+            for sample in reversed(analyzed_cell_samples)
+            if sample.timestamp < anomaly.timestamp
+        ][: self.settings.context_lookback_samples - 1]
 
         relation_models = _relations(topology, anomaly.cell_id)
         neighbor_ids = sorted(
@@ -178,7 +187,7 @@ class InvestigationContextBuilder:
                 for sample in eligible
                 if sample.timestamp == anomaly.timestamp and sample.cell_id in neighbor_ids
             ),
-            key=lambda sample: sample.cell_id,
+            key=lambda sample: (sample.cell_id, sample.step),
         )
 
         evidence: list[EvidenceItem] = [
@@ -197,7 +206,9 @@ class InvestigationContextBuilder:
                 ),
             )
         ]
-        for sample in [*history, *neighbor_snapshot]:
+        prioritized_samples = [current_sample, *recent_history, *neighbor_snapshot]
+        remaining_budget = self.settings.max_evidence_items - len(evidence)
+        for sample in prioritized_samples[:remaining_budget]:
             evidence.append(
                 EvidenceItem(
                     evidence_id=f"ev-kpi-{sample.cell_id.lower()}-step-{sample.step}",
@@ -213,7 +224,6 @@ class InvestigationContextBuilder:
                     ),
                 )
             )
-        evidence = evidence[: self.settings.max_evidence_items]
         knowledge = self.retriever.retrieve(_query(anomaly), top_k=self.settings.retrieval_top_k)
         observable_anomaly = ObservableAnomaly(
             cell_id=anomaly.cell_id,
