@@ -30,6 +30,22 @@ evidence of network performance.
 - There is no commercial, laboratory, field, standards, or independently curated dataset.
 - The API smoke uses an in-process client and reports no timing result.
 
+## AI investigation limits
+
+- The committed investigation artifact uses a deterministic fixture provider and is not an LLM
+  benchmark. No live-model accuracy result is reported.
+- The optional live adapter has not been qualified against provider/model drift, rate limits,
+  regional processing requirements, or production privacy controls.
+- The knowledge corpus is small and project-created. TF-IDF retrieval is lexical and can miss
+  semantically relevant material or retrieve superficially similar text.
+- The verifier proves reference membership and applies narrow claim/safety policies; it cannot
+  prove that every supported natural-language inference is correct.
+- Context contains bounded aggregate KPIs, thresholds, and topology relations, not alarms,
+  packet traces, UE measurements, configuration history, or vendor logs.
+- Prompt-injection defenses are architectural and tested, but not a formal security proof.
+- Context export is explicit and suitable only for this synthetic repository. Future sensitive
+  telemetry would require data classification, minimization, retention, and access controls.
+
 ## Safety and operational limits
 
 - There is no live ingestion, persistence, identity, authorization, rate limiting, audit
@@ -40,6 +56,8 @@ evidence of network performance.
   policy, formal verification, or protection against all unsafe network changes.
 - No action can be executed because no southbound client exists. Human approval is not
   implemented as a persisted workflow.
+- AI investigation cannot create or approve an action, but the API itself is still an
+  unauthenticated local demonstrator and must not be exposed to an untrusted network.
 
 ## Standards and claims
 

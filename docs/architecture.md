@@ -17,6 +17,11 @@ flowchart TB
     R --> H["Anomaly fusion"]
     M --> H
     H --> D["Conservative KPI-pattern diagnosis"]
+    H --> X["Leakage-safe observable context"]
+    X --> RAG["Deterministic lexical retrieval"]
+    RAG --> AI["Optional structured AI investigator"]
+    AI --> V["Deterministic evidence verifier"]
+    V --> ADV["Advisory investigation report only"]
     D --> A["Candidate action or human review"]
     A --> P["Copied state and bounded response surrogate"]
     P --> G["Fail-closed guardrails"]
@@ -26,6 +31,9 @@ flowchart TB
     S --> UI["Streamlit"]
     S --> E["Closed-set evaluation"]
 ```
+
+There is intentionally no edge from the advisory report to the action policy, twin,
+guardrails, or shadow decision.
 
 ## Dependency and data-flow rules
 
@@ -41,6 +49,8 @@ flowchart TB
   It retains the most recent anomaly per cell and evaluates freshness against the latest
   timestamp in the replay.
 - `evaluation` alone uses target cells, active windows, and labels for scoring.
+- `investigation` receives explicit observable arguments and cannot serialize a scenario into
+  provider context. Its output is advisory and cannot create a domain action.
 - API action validation accepts stored telemetry references and recomputes the surrogate
   result server-side. It does not trust a client prediction or client clock.
 
@@ -72,6 +82,33 @@ confidence. Any human-review candidate is an explicit escalation.
 
 There is no NETCONF, RESTCONF, gNMI, O1, A1, E2, RIC, EMS/OSS, vendor CLI, or command
 executor. “Approved” means approved to appear in a shadow report only.
+
+## AI investigation trust boundary
+
+The optional investigation branch begins at an already detected anomaly. Context construction
+enumerates observable KPI values and excludes each `KPISample.ground_truth` field. It filters
+out timestamps after the anomaly, bounds current-cell history and same-time neighbor state, and
+retrieves a bounded set of project-created knowledge chunks with stable citations.
+
+```mermaid
+flowchart LR
+    O["Observable anomaly and KPI history"] --> C["Bounded context builder"]
+    K["Project-created engineering knowledge"] --> R["TF-IDF retrieval"]
+    R --> C
+    C --> I["Structured AI investigator"]
+    I --> V["Evidence and safety verifier"]
+    V --> Q["Advisory engineering view"]
+
+    D["Existing deterministic RCA"] --> A["Existing action policy"]
+    A --> T["Twin response surrogate"]
+    T --> G["Fail-closed guardrails"]
+    G --> S["Shadow decision"]
+```
+
+Provider output is strict Pydantic data, but schema validity alone does not make it trusted.
+The verifier checks evidence/citation membership, unsupported observations, confidence support,
+abstention, context binding, and unsafe actuation language. Provider failure, invalid output,
+or verifier rejection does not interrupt or modify the deterministic branch.
 
 ## Runtime state
 

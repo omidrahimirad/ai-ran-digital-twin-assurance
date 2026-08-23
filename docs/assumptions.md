@@ -38,6 +38,18 @@
 - Guardrail thresholds do not constitute an operator safety case.
 - An approved result is only eligible for shadow display and cannot authorize execution.
 
+## Advisory investigation
+
+- Provider context contains only observable synthetic KPIs at or before the analyzed anomaly,
+  same-time topology relations, configured thresholds, and project-created knowledge.
+- Retrieved chunks are reference material, not trusted instructions or answer keys.
+- A valid structured response is still untrusted until deterministic verification completes.
+- Evidence-reference validity establishes that a cited item exists in context; it does not prove
+  the provider's interpretation is causally correct.
+- The fixture provider is deterministic test infrastructure, not a model-quality proxy.
+- Provider output is advisory and cannot change deterministic RCA, action policy, twin results,
+  guardrails, or the shadow decision.
+
 ## Evaluation and reproduction
 
 - The committed protocol uses training seed `17`, evaluation seeds `101`, `211`, and
@@ -49,3 +61,5 @@
   deterministic benchmark artifact.
 - API checks establish functional health only. No latency, load, concurrency, or
   scalability claim is made.
+- No live-model result is assumed or reported. Live evaluation requires explicit provider
+  configuration and opt-in.
