@@ -63,10 +63,29 @@ class ScenarioSettings(StrictSettings):
     scenarios: list[FaultScenario] = Field(min_length=8)
 
 
+class InvestigationSettings(StrictSettings):
+    context_lookback_samples: int = Field(default=12, ge=1, le=288)
+    max_evidence_items: int = Field(default=48, ge=2, le=256)
+    retrieval_top_k: int = Field(default=4, ge=0, le=12)
+    max_hypotheses: int = Field(default=3, ge=1, le=4)
+    high_confidence_threshold: float = Field(default=0.8, ge=0.5, le=1)
+    min_supporting_evidence: int = Field(default=2, ge=1, le=12)
+    provider_timeout_seconds: float = Field(default=20, gt=0, le=120)
+    provider_max_retries: int = Field(default=1, ge=0, le=3)
+    max_output_tokens: int = Field(default=1800, ge=256, le=8000)
+
+    @model_validator(mode="after")
+    def validate_evidence_policy(self) -> "InvestigationSettings":
+        if self.min_supporting_evidence > self.max_evidence_items:
+            raise ValueError("min_supporting_evidence cannot exceed max_evidence_items")
+        return self
+
+
 class ProjectConfig(StrictSettings):
     network: NetworkSettings
     thresholds: ThresholdSettings
     scenarios: list[FaultScenario]
+    investigation: InvestigationSettings = Field(default_factory=InvestigationSettings)
 
     @model_validator(mode="after")
     def validate_scenarios(self) -> "ProjectConfig":
@@ -111,27 +130,44 @@ def _load_documents(config_dir: str | Path | None) -> tuple[dict[str, Any], ...]
     selected = config_dir or os.getenv("AI_RAN_CONFIG_DIR")
     if selected is not None:
         directory = Path(selected)
-        return tuple(
+        core_documents = tuple(
             _read_yaml(directory / name)
             for name in ("network.yaml", "thresholds.yaml", "scenarios.yaml")
         )
+        investigation_path = directory / "investigation.yaml"
+        investigation_document = (
+            _read_yaml(investigation_path) if investigation_path.exists() else {}
+        )
+        return (*core_documents, investigation_document)
     defaults = resources.files("ai_ran_assurance").joinpath("default_config")
     return tuple(
         _parse_yaml(defaults.joinpath(name).read_text(encoding="utf-8"), f"package:{name}")
-        for name in ("network.yaml", "thresholds.yaml", "scenarios.yaml")
+        for name in (
+            "network.yaml",
+            "thresholds.yaml",
+            "scenarios.yaml",
+            "investigation.yaml",
+        )
     )
 
 
 def load_config(config_dir: str | Path | None = None) -> ProjectConfig:
     try:
-        network_document, threshold_document, scenario_document = _load_documents(config_dir)
+        (
+            network_document,
+            threshold_document,
+            scenario_document,
+            investigation_document,
+        ) = _load_documents(config_dir)
         network = NetworkSettings.model_validate(network_document)
         thresholds = ThresholdSettings.model_validate(threshold_document)
         scenario_settings = ScenarioSettings.model_validate(scenario_document)
+        investigation = InvestigationSettings.model_validate(investigation_document)
         return ProjectConfig(
             network=network,
             thresholds=thresholds,
             scenarios=scenario_settings.scenarios,
+            investigation=investigation,
         )
     except ValidationError as exc:
         raise ValueError(f"invalid project configuration: {exc}") from exc
