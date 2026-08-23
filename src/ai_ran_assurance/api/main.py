@@ -10,6 +10,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_
 from ai_ran_assurance.api.schemas import (
     ActionValidationRequest,
     ActionValidationResponse,
+    InvestigationRequest,
     ScenarioRunRequest,
     ScenarioRunResponse,
 )
@@ -22,6 +23,14 @@ from ai_ran_assurance.domain.models import (
     RootCauseDiagnosis,
     ShadowDecision,
 )
+from ai_ran_assurance.investigation import (
+    InvestigationFailureKind,
+    InvestigationReport,
+    InvestigationService,
+    ProviderUnavailableError,
+    VerificationStatus,
+    provider_from_name,
+)
 from ai_ran_assurance.twin import (
     ActionSimulationError,
     GuardrailValidator,
@@ -32,6 +41,31 @@ from ai_ran_assurance.workflow import ClosedLoopEngine, ScenarioRun
 
 REQUESTS = Counter("ai_ran_api_requests_total", "API requests", ["path", "method"])
 LATENCY = Histogram("ai_ran_api_latency_seconds", "API latency", ["path"])
+AI_INVESTIGATIONS = Counter(
+    "ai_ran_investigations_total",
+    "Advisory investigation requests by bounded provider and verification status",
+    ["provider", "status"],
+)
+AI_PROVIDER_ERRORS = Counter(
+    "ai_ran_investigation_provider_errors_total",
+    "Advisory provider failures",
+    ["provider"],
+)
+AI_VERIFIER_REJECTIONS = Counter(
+    "ai_ran_investigation_verifier_rejections_total",
+    "Advisory investigation verifier rejections",
+    ["provider"],
+)
+AI_ABSTENTIONS = Counter(
+    "ai_ran_investigation_abstentions_total",
+    "Advisory investigation abstentions",
+    ["provider"],
+)
+AI_VALIDATION_FAILURES = Counter(
+    "ai_ran_investigation_validation_failures_total",
+    "Structured investigation output validation failures",
+    ["provider"],
+)
 LOGGER = logging.getLogger(__name__)
 
 
@@ -142,6 +176,38 @@ def recommendations() -> list[CorrectiveAction]:
 @app.get("/decisions", response_model=list[ShadowDecision])
 def decisions() -> list[ShadowDecision]:
     return _latest().decisions
+
+
+@app.post("/investigations", response_model=InvestigationReport)
+def investigate(request: InvestigationRequest) -> InvestigationReport:
+    """Investigate stored observable evidence; no truth or action input is accepted."""
+    run = _latest()
+    try:
+        provider = provider_from_name(request.provider, engine().config)
+        report = InvestigationService(engine().config, provider).investigate(
+            topology=run.topology,
+            telemetry=run.telemetry,
+            anomalies=run.anomalies,
+            cell_id=request.cell_id,
+            mode=request.mode,
+            deterministic_diagnoses=run.diagnoses,
+        )
+    except ProviderUnavailableError as exc:
+        LOGGER.info("ai_investigation_unavailable provider=%s reason=%s", request.provider, exc)
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    status = report.verification.status.value
+    AI_INVESTIGATIONS.labels(provider=request.provider, status=status).inc()
+    if report.failure_kind is InvestigationFailureKind.PROVIDER:
+        AI_PROVIDER_ERRORS.labels(provider=request.provider).inc()
+    if report.failure_kind is InvestigationFailureKind.SCHEMA_VALIDATION:
+        AI_VALIDATION_FAILURES.labels(provider=request.provider).inc()
+    if report.verification.status is VerificationStatus.REJECTED:
+        AI_VERIFIER_REJECTIONS.labels(provider=request.provider).inc()
+    if report.investigation is not None and report.investigation.output.abstained:
+        AI_ABSTENTIONS.labels(provider=request.provider).inc()
+    return report
 
 
 @app.post("/actions/validate", response_model=ActionValidationResponse)

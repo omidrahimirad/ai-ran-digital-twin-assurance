@@ -108,3 +108,21 @@ That produces 48 episodes and 220,800 cell/time samples.
   do not belong in the deterministic benchmark artifact.
 
 The artifact is a closed-set stress test, not an external benchmark.
+
+## Advisory investigation methodology
+
+The optional investigation path ranks an operational anomaly without using scenario targets or
+fault intervals. `InvestigationContextBuilder` then uses the matching timestamp, at most twelve
+current-cell historical samples, same-timestamp enabled-neighbor state, explicit engineering
+thresholds, and up to four retrieved knowledge chunks. Every sample satisfies
+`timestamp <= analyzed_timestamp`. KPI units and stable evidence IDs are included.
+
+The local retriever splits project-created Markdown at headings, calculates stable content IDs,
+and ranks chunks with deterministic TF-IDF cosine similarity. Retrieved text is untrusted data.
+The provider instruction requires structured hypotheses, evidence/citation references, competing
+explanations, missing evidence, follow-up checks, and abstention.
+
+The verifier independently resolves references against the supplied context, checks unsupported
+data claims and actuation language, and requires multiple valid evidence references for high
+confidence. The fixture provider is deterministic test infrastructure. Its evaluation artifact
+does not measure LLM performance. See [AI evaluation](ai_evaluation.md).

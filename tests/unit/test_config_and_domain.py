@@ -45,8 +45,29 @@ def test_invalid_project_configuration(tmp_path: Path) -> None:
     (tmp_path / "network.yaml").write_text("cell_count: 2\n", encoding="utf-8")
     (tmp_path / "thresholds.yaml").write_text("latency_max_ms: nope\n", encoding="utf-8")
     (tmp_path / "scenarios.yaml").write_text("scenarios: []\n", encoding="utf-8")
+    (tmp_path / "investigation.yaml").write_text("{}\n", encoding="utf-8")
     with pytest.raises(ValueError, match="invalid project configuration"):
         load_config(tmp_path)
+
+
+def test_invalid_investigation_configuration_is_rejected(tmp_path: Path) -> None:
+    config_dir = Path(__file__).parents[2] / "config"
+    for name in ("network.yaml", "thresholds.yaml", "scenarios.yaml"):
+        (tmp_path / name).write_text((config_dir / name).read_text(), encoding="utf-8")
+    (tmp_path / "investigation.yaml").write_text("max_hypotheses: 99\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="invalid project configuration"):
+        load_config(tmp_path)
+
+
+def test_legacy_three_file_configuration_uses_validated_investigation_defaults(
+    tmp_path: Path,
+) -> None:
+    config_dir = Path(__file__).parents[2] / "config"
+    for name in ("network.yaml", "thresholds.yaml", "scenarios.yaml"):
+        (tmp_path / name).write_text((config_dir / name).read_text(), encoding="utf-8")
+    loaded = load_config(tmp_path)
+    assert loaded.investigation.context_lookback_samples == 12
+    assert loaded.investigation.retrieval_top_k == 4
 
 
 def test_network_baseline_must_cover_the_daily_profile() -> None:

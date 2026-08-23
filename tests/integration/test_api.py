@@ -123,3 +123,49 @@ def test_action_validation_rejects_invalid_action_parameters(client: TestClient)
     )
     assert response.status_code == 422
     assert "parameters must be exactly" in str(response.json())
+
+
+def test_fixture_investigation_is_server_side_advisory_and_observable(
+    client: TestClient,
+) -> None:
+    client.post("/scenarios/run", json={"scenario": "congestion"})
+    response = client.post("/investigations", json={"provider": "fixture"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["investigation"]["provider"]["live_model"] is False
+    assert body["investigation"]["output"]["primary_hypothesis"] == "congestion"
+    assert body["verification"]["status"] == "verified"
+    assert body["advisory_only"] is True
+    assert body["can_modify_shadow_decision"] is False
+    serialized_context = str(body["context"])
+    for forbidden in ("ground_truth", "target_cells", "fault_type", "severity"):
+        assert forbidden not in serialized_context
+    metrics = client.get("/metrics").text
+    assert "ai_ran_investigations_total" in metrics
+
+
+def test_investigation_request_rejects_truth_output_and_unavailable_live_provider(
+    client: TestClient, monkeypatch: object
+) -> None:
+    injected = client.post(
+        "/investigations",
+        json={
+            "provider": "fixture",
+            "ground_truth": "congestion",
+            "model_output": {"primary_hypothesis": "congestion"},
+            "verification": {"status": "verified"},
+            "command": "apply change",
+        },
+    )
+    assert injected.status_code == 422
+    fields = {item["loc"][-1] for item in injected.json()["detail"]}
+    assert fields == {"ground_truth", "model_output", "verification", "command"}
+    unavailable = client.post("/investigations", json={"provider": "openai"})
+    assert unavailable.status_code == 503
+    assert "live provider disabled" in unavailable.json()["detail"]
+    assert (
+        client.post(
+            "/investigations", json={"provider": "fixture", "cell_id": "not-a-cell"}
+        ).status_code
+        == 422
+    )

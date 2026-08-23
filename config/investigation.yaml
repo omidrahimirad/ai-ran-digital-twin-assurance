@@ -1,0 +1,9 @@
+context_lookback_samples: 12
+max_evidence_items: 48
+retrieval_top_k: 4
+max_hypotheses: 3
+high_confidence_threshold: 0.8
+min_supporting_evidence: 2
+provider_timeout_seconds: 20
+provider_max_retries: 1
+max_output_tokens: 1800
