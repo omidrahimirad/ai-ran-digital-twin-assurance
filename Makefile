@@ -1,4 +1,4 @@
-.PHONY: install lint format type test coverage benchmark demo api dashboard security quality
+.PHONY: install lint format type test coverage benchmark ai-evaluate demo api dashboard security quality
 
 install:
 	uv sync --frozen --extra dev
@@ -21,6 +21,10 @@ coverage:
 benchmark:
 	uv run python scripts/run_benchmark.py
 
+ai-evaluate:
+	uv run ai-ran-assurance evaluate-ai --provider fixture --profile smoke
+	git diff --exit-code -- reports/ai_evaluation
+
 demo:
 	uv run python -m ai_ran_assurance.cli demo --scenario congestion
 
@@ -35,4 +39,4 @@ security:
 	uvx --from pip-audit==2.9.0 pip-audit --requirement /tmp/ai-ran-runtime-requirements.txt --disable-pip
 	uvx --from bandit==1.8.6 bandit -q -r src dashboard scripts
 
-quality: lint format type coverage security benchmark
+quality: lint format type coverage security benchmark ai-evaluate
