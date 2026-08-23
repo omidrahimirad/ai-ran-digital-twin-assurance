@@ -5,6 +5,7 @@ import plotly.express as px
 import streamlit as st
 
 from ai_ran_assurance.config import load_config
+from ai_ran_assurance.investigation import FixtureProvider, InvestigationService, select_anomaly
 from ai_ran_assurance.workflow import ClosedLoopEngine
 
 st.set_page_config(page_title="Synthetic RAN Assurance", layout="wide")
@@ -20,10 +21,16 @@ def get_engine() -> ClosedLoopEngine:
     return ClosedLoopEngine()
 
 
+@st.cache_resource
+def get_investigation_service() -> InvestigationService:
+    return InvestigationService(load_config(), FixtureProvider())
+
+
 config = load_config()
 scenario = st.sidebar.selectbox("Fault scenario", [item.name for item in config.scenarios])
 if st.sidebar.button("Run scenario", type="primary") or "run" not in st.session_state:
     st.session_state.run = get_engine().run(scenario)
+    st.session_state.pop("investigation_report", None)
 
 run = st.session_state.run
 st.subheader("Network overview")
@@ -34,9 +41,9 @@ col3.metric("Telemetry samples", len(run.telemetry))
 col4.metric("Anomalies", len(run.anomalies))
 
 frame = pd.DataFrame([item.model_dump(mode="json") for item in run.telemetry])
-target = run.scenario.target_cells[0]
-cell_frame = frame[frame["cell_id"] == target]
-st.subheader(f"KPI time series — {target}")
+observed_cell = select_anomaly(run.anomalies).cell_id
+cell_frame = frame[frame["cell_id"] == observed_cell]
+st.subheader(f"KPI time series — detected cell {observed_cell}")
 selected_kpis = st.multiselect(
     "KPIs",
     [
@@ -69,6 +76,87 @@ with right:
         st.write(decision.action.action_type.value)
         st.write(f"Status: `{decision.status.value}`")
         st.write("Guardrails:", decision.guardrail.violations or ["passed"])
+
+st.subheader("Advisory AI investigation")
+st.info(
+    "AI investigation is advisory and cannot modify the shadow decision or execute "
+    "network actions. The offline fixture demonstrates contracts, not LLM performance."
+)
+detected_cells = sorted({item.cell_id for item in run.anomalies})
+selected_cell = st.selectbox("Detected cell to investigate", detected_cells)
+if st.button("Run evidence-grounded fixture investigation"):
+    st.session_state.investigation_report = get_investigation_service().investigate(
+        topology=run.topology,
+        telemetry=run.telemetry,
+        anomalies=run.anomalies,
+        cell_id=selected_cell,
+    )
+
+report = st.session_state.get("investigation_report")
+if report is not None and report.context.analyzed_cell == selected_cell:
+    deterministic = next(
+        (item for item in run.diagnoses if item.cell_id == selected_cell),
+        None,
+    )
+    evidence_column, investigation_column = st.columns(2)
+    with evidence_column:
+        st.markdown("#### Deterministic evidence")
+        st.write(
+            {
+                "analyzed_timestamp": report.context.analyzed_timestamp.isoformat(),
+                "anomaly_type": report.context.anomaly.anomaly_type.value,
+                "detector": report.context.anomaly.detector,
+                "anomaly_score": report.context.anomaly.score,
+                "KPI_evidence": {
+                    key: f"{value.value} {value.unit}"
+                    for key, value in report.context.anomaly.evidence.items()
+                },
+            }
+        )
+        if deterministic is not None:
+            st.caption("Existing deterministic per-cell RCA candidate (not ground truth)")
+            st.write(
+                {
+                    "probable_category": deterministic.probable_root_cause.value,
+                    "confidence": deterministic.confidence,
+                    "next_check": deterministic.next_diagnostic_check,
+                }
+            )
+    with investigation_column:
+        st.markdown("#### AI investigation")
+        if report.investigation is None:
+            st.error(report.failure_reason or "Provider output was rejected.")
+        else:
+            output = report.investigation.output
+            st.metric("Primary hypothesis", output.primary_hypothesis.value)
+            st.write(f"Abstained: **{output.abstained}**")
+            st.caption(output.uncertainty_explanation)
+            for hypothesis in output.hypotheses:
+                with st.expander(
+                    f"{hypothesis.category.value} — {hypothesis.confidence:.0%}",
+                    expanded=hypothesis.category is output.primary_hypothesis,
+                ):
+                    st.write(hypothesis.explanation)
+                    st.write("Supporting evidence:", hypothesis.supporting_evidence_ids)
+                    st.write("Competing/counter evidence:", hypothesis.counter_evidence_ids)
+                    st.write("Missing evidence:", hypothesis.missing_evidence)
+                    st.write("Next checks:", hypothesis.next_diagnostic_checks)
+
+    knowledge_column, verification_column = st.columns(2)
+    with knowledge_column:
+        st.markdown("#### Retrieved engineering knowledge")
+        for item in report.context.retrieved_knowledge:
+            st.markdown(f"**{item.chunk_id} — {item.heading}**")
+            st.caption(f"{item.source_path} · relevance {item.relevance_score:.3f}")
+    with verification_column:
+        st.markdown("#### Deterministic verification")
+        st.metric("Status", report.verification.status.value.upper())
+        st.write("Invalid evidence references:", report.verification.invalid_evidence_references)
+        st.write("Invalid citations:", report.verification.invalid_knowledge_citations)
+        st.write("Grounding warnings:", report.verification.unsupported_claims)
+        st.write("Safety violations:", report.verification.safety_policy_violations)
+    with st.expander("Inspect exact provider context"):
+        st.json(report.context.model_dump(mode="json"))
 
 st.subheader("Before and surrogate-after copied state")
 for decision in run.decisions:

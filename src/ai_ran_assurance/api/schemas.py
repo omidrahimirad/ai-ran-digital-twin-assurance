@@ -1,6 +1,9 @@
+from typing import Literal
+
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from ai_ran_assurance.domain.models import CorrectiveAction, GuardrailResult, TwinPrediction
+from ai_ran_assurance.investigation.models import InvestigationMode
 
 
 class StrictRequest(BaseModel):
@@ -30,3 +33,9 @@ class ActionValidationResponse(BaseModel):
     result: GuardrailResult
     prediction: TwinPrediction
     shadow_mode: bool = True
+
+
+class InvestigationRequest(StrictRequest):
+    provider: Literal["fixture", "openai"] = "fixture"
+    mode: InvestigationMode = InvestigationMode.INDEPENDENT
+    cell_id: str | None = Field(default=None, pattern=r"^CELL-[0-9]{3,6}$")
