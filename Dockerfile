@@ -20,6 +20,7 @@ WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
 COPY config ./config
 COPY dashboard ./dashboard
+COPY artifacts/sample_results.json ./artifacts/sample_results.json
 
 RUN useradd --no-log-init --create-home --uid 10001 appuser \
     && chown -R appuser:appuser /app

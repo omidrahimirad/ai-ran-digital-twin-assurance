@@ -32,6 +32,10 @@ jobs:
         run: uv run python scripts/run_benchmark.py
       - if: matrix.python-version == '3.11'
         run: git diff --exit-code -- artifacts/sample_results.json docs/results.md
+      - if: matrix.python-version == '3.11'
+        run: uv run ai-ran-assurance evaluate-ai --provider fixture --profile smoke
+      - if: matrix.python-version == '3.11'
+        run: git diff --exit-code -- reports/ai_evaluation
 
   security:
     runs-on: ubuntu-latest
@@ -55,5 +59,10 @@ jobs:
         with:
           context: .
           push: false
+          load: true
+          tags: ai-ran-assurance:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - run: >-
+          docker run --rm ai-ran-assurance:ci python -m ai_ran_assurance.cli investigate
+          --scenario congestion --provider fixture > /tmp/container-investigation.json
